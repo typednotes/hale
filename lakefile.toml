@@ -1,6 +1,7 @@
 name = "lean-std"
 version = "0.1.0"
 defaultTargets = ["lean-std"]
+testDriver = "«lean-std-tests»"
 
 [[lean_lib]]
 name = "LeanStd"
@@ -8,3 +9,11 @@ name = "LeanStd"
 [[lean_exe]]
 name = "lean-std"
 root = "Main"
+
+[[lean_lib]]
+name = "Tests"
+globs = ["Tests"]
+
+[[lean_exe]]
+name = "lean-std-tests"
+root = "Tests.Main"
