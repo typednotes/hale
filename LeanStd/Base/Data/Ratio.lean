@@ -15,7 +15,7 @@
   - No division by zero: denominator is always positive
 -/
 
-namespace LeanStd
+namespace Data
 
 /-- A rational number $\frac{\text{num}}{\text{den}}$ in canonical form.
 
@@ -180,4 +180,4 @@ def round (r : Ratio) : Int :=
   shifted / (2 * r.den)
 
 end Ratio
-end LeanStd
+end Data

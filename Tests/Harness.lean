@@ -28,4 +28,18 @@ def runTests (suiteName : String) (tests : List TestResult) : IO Nat := do
       failures := failures + 1
   pure failures
 
+def checkIO (name : String) (action : IO Bool) (msg : String := "") : IO TestResult := do
+  let cond ← action
+  pure { name, passed := cond, message := if cond then "" else if msg.isEmpty then "assertion failed" else msg }
+
+def checkEqIO [BEq α] [ToString α] (name : String) (expected : α) (action : IO α) : IO TestResult := do
+  let actual ← action
+  let passed := expected == actual
+  let message := if passed then "" else s!"expected {expected}, got {actual}"
+  pure { name, passed, message }
+
+def runIOTests (suiteName : String) (tests : IO (List TestResult)) : IO Nat := do
+  let results ← tests
+  runTests suiteName results
+
 end Tests

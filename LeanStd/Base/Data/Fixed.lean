@@ -17,9 +17,9 @@
   - `toRatio` conversion preserves the exact value
 -/
 
-import LeanStd.Base.Ratio
+import LeanStd.Base.Data.Ratio
 
-namespace LeanStd
+namespace Data
 
 /-- A fixed-point decimal number with `precision` decimal places.
 
@@ -119,4 +119,4 @@ def toRatio (f : Fixed p) : Ratio :=
     exact Int.ofNat_ne_zero.mpr (Nat.pos_iff_ne_zero.mp (scale_pos p)))
 
 end Fixed
-end LeanStd
+end Data

@@ -4,7 +4,7 @@
   Provides `on`, `applyTo` (flip apply / Haskell's `&`), and re-exports `flip`.
 -/
 
-namespace LeanStd.Function
+namespace Data.Function
 
 /-- The `on` combinator lifts a binary function through a unary projection:
 
@@ -63,4 +63,4 @@ theorem flip_flip (f : α → β → γ) :
 theorem flip_apply (f : α → β → γ) (a : α) (b : β) :
     flip f b a = f a b := rfl
 
-end LeanStd.Function
+end Data.Function

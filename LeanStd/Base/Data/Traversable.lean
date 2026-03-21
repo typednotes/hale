@@ -9,10 +9,11 @@
   Provides `traverse` and `sequence` operations.
 -/
 
-import LeanStd.Base.Foldable
-import LeanStd.Base.Identity
+import LeanStd.Base.Data.Foldable
+import LeanStd.Base.Data.Functor.Identity
 
-namespace LeanStd
+namespace Data
+open Data.Functor
 
 /-- `Traversable` captures structures that can be traversed left-to-right,
     performing an applicative action at each element and collecting results.
@@ -65,14 +66,14 @@ instance : Traversable Option where
     | some a => some <$> f a
     | none => pure none
 
-instance : Traversable NonEmpty where
+instance : Traversable List.NonEmpty where
   traverse f ne :=
     let head := f ne.head
     let tail := ne.tail.foldr (fun a acc => (· :: ·) <$> f a <*> acc) (pure [])
-    NonEmpty.mk <$> head <*> tail
+    List.NonEmpty.mk <$> head <*> tail
 
 -- Note: `Either α` cannot have a `Traversable` instance due to universe constraints.
 -- `Either (α : Type u) (β : Type v)` gives `Either α : Type v → Type (max u v)`,
 -- which doesn't match `Type u → Type u` required by `Traversable`.
 
-end LeanStd
+end Data

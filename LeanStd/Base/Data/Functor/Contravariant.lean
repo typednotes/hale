@@ -4,7 +4,7 @@
   A contravariant functor reverses the direction of morphisms.
 -/
 
-namespace LeanStd
+namespace Data.Functor
 
 /-- A **contravariant functor** $F : \mathsf{Type}^{\text{op}} \to \mathsf{Type}$.
 Unlike a covariant functor which preserves morphism direction, a contravariant
@@ -69,4 +69,4 @@ instance : LawfulContravariant Equivalence where
   contramap_id _ := rfl
   contramap_comp _ _ _ := rfl
 
-end LeanStd
+end Data.Functor

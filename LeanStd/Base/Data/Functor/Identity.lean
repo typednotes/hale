@@ -4,7 +4,7 @@
   The simplest functor: wraps a value with no extra structure.
 -/
 
-namespace LeanStd
+namespace Data.Functor
 
 /-- The identity functor. `Identity α` is isomorphic to `α`. -/
 structure Identity (α : Type u) where
@@ -48,4 +48,4 @@ theorem bind_assoc (x : Identity α) (f : α → Identity β) (g : β → Identi
     (x >>= f) >>= g = x >>= (fun a => f a >>= g) := rfl
 
 end Identity
-end LeanStd
+end Data.Functor

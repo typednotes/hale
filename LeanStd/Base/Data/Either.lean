@@ -12,9 +12,9 @@
   - `partitionEithers` with length preservation proof
 -/
 
-import LeanStd.Base.Bifunctor
+import LeanStd.Base.Data.Bifunctor
 
-namespace LeanStd
+namespace Data
 
 /-- `Either α β` is a sum type: either `Left α` or `Right β`.
 
@@ -154,4 +154,4 @@ instance [ToString α] [ToString β] : ToString (Either α β) where
     | right b => s!"Right({b})"
 
 end Either
-end LeanStd
+end Data

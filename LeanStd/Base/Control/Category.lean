@@ -4,7 +4,7 @@
   A category has identity morphisms and associative composition.
 -/
 
-namespace LeanStd
+namespace Control
 
 /-- A **category** $\mathcal{C}$ consists of:
 
@@ -74,4 +74,4 @@ end Fun
     $$f \ggg g = \text{Category.comp}\;f\;g$$ -/
 scoped infixr:90 " >>> " => fun f g => Category.comp f g
 
-end LeanStd
+end Control

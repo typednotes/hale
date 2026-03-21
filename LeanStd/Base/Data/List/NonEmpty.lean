@@ -15,7 +15,7 @@
   - `toList` is proven non-nil
 -/
 
-namespace LeanStd
+namespace Data.List
 
 /-- A non-empty list. Stores `head : α` and `tail : List α`, ensuring at least one element.
 
@@ -164,4 +164,4 @@ instance [ToString α] : ToString (NonEmpty α) where
   toString ne := toString ne.toList
 
 end NonEmpty
-end LeanStd
+end Data.List

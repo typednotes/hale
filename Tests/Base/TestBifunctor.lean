@@ -1,7 +1,7 @@
 import LeanStd
 import Tests.Harness
 
-open LeanStd Tests
+open Data Tests
 
 namespace TestBifunctor
 

@@ -28,29 +28,93 @@ import LeanStd
 open LeanStd
 ```
 
+## List of libraries to port
+
+https://github.com/Gabriella439/post-rfc/blob/main/sotu.md
+
+The essential ones:
+- base
+- binary
+- bytestring
+- containers
+- directory
+- filepath
+- network
+- text
+- time
+- transformers
+- unordered-containers
+- vector
+
+Essentials for web development:
+- aeson
+- http-types
+- wai
+- warp
+
+Solves something really well:
+- hspec
+- criterion
+- deepseq
+- lens
+- unliftio
+
+Super handy:
+- attoparsec
+
+
+
+Dependencies from:
+- https://hackage.haskell.org/package/lens
+- https://hackage.haskell.org/package/pandoc
+- https://hackage.haskell.org/package/async
+- https://hackage.haskell.org/package/bytestring
+
+Concurrent primitives
+- https://wiki.haskell.org/Concurrency
+
+Implement an async server:
+- https://hackage.haskell.org/package/warp
+  - https://github.com/yesodweb/wai
+- https://www.servant.dev/
+  - https://github.com/haskell-servant/servant
+
+Implement an async client:
+- 
+
+Implemented
+- Base
+- Control.Concurrent (MVar, Chan, QSem, QSemN, ThreadId, forkIO)
+
+
 ## Module Mapping
 
-| Lean Module | Haskell Module | Phase |
-|---|---|---|
-| `LeanStd.Base.Void` | `Data.Void` | 0: Foundational |
-| `LeanStd.Base.Function` | `Data.Function` | 0: Foundational |
-| `LeanStd.Base.Newtype` | `Data.Monoid` / `Data.Semigroup` | 0: Foundational |
-| `LeanStd.Base.Bifunctor` | `Data.Bifunctor` | 1: Core Abstractions |
-| `LeanStd.Base.Contravariant` | `Data.Functor.Contravariant` | 1: Core Abstractions |
-| `LeanStd.Base.Const` | `Data.Functor.Const` | 1: Core Abstractions |
-| `LeanStd.Base.Identity` | `Data.Functor.Identity` | 1: Core Abstractions |
-| `LeanStd.Base.Compose` | `Data.Functor.Compose` | 1: Core Abstractions |
-| `LeanStd.Base.Category` | `Control.Category` | 1: Core Abstractions |
-| `LeanStd.Base.NonEmpty` | `Data.List.NonEmpty` | 2: Data Structures |
-| `LeanStd.Base.Either` | `Data.Either` | 2: Data Structures |
-| `LeanStd.Base.Ord` | `Data.Ord` | 2: Data Structures |
-| `LeanStd.Base.Tuple` | `Data.Tuple` + `Prelude` | 2: Data Structures |
-| `LeanStd.Base.Foldable` | `Data.Foldable` | 3: Traversals |
-| `LeanStd.Base.Traversable` | `Data.Traversable` | 3: Traversals |
-| `LeanStd.Base.Ratio` | `Data.Ratio` | 4: Numeric Types |
-| `LeanStd.Base.Complex` | `Data.Complex` | 4: Numeric Types |
-| `LeanStd.Base.Fixed` | `Data.Fixed` | 4: Numeric Types |
-| `LeanStd.Base.Arrow` | `Control.Arrow` | 5: Advanced Abstractions |
+| Lean Module | Haskell Module |
+|---|---|
+| `LeanStd.Base.Data.Void` | `Data.Void` |
+| `LeanStd.Base.Data.Function` | `Data.Function` |
+| `LeanStd.Base.Data.Newtype` | `Data.Monoid` / `Data.Semigroup` |
+| `LeanStd.Base.Data.Bifunctor` | `Data.Bifunctor` |
+| `LeanStd.Base.Data.Functor.Contravariant` | `Data.Functor.Contravariant` |
+| `LeanStd.Base.Data.Functor.Const` | `Data.Functor.Const` |
+| `LeanStd.Base.Data.Functor.Identity` | `Data.Functor.Identity` |
+| `LeanStd.Base.Data.Functor.Compose` | `Data.Functor.Compose` |
+| `LeanStd.Base.Control.Category` | `Control.Category` |
+| `LeanStd.Base.Data.List.NonEmpty` | `Data.List.NonEmpty` |
+| `LeanStd.Base.Data.Either` | `Data.Either` |
+| `LeanStd.Base.Data.Ord` | `Data.Ord` |
+| `LeanStd.Base.Data.Tuple` | `Data.Tuple` + `Prelude` |
+| `LeanStd.Base.Data.Foldable` | `Data.Foldable` |
+| `LeanStd.Base.Data.Traversable` | `Data.Traversable` |
+| `LeanStd.Base.Data.Ratio` | `Data.Ratio` |
+| `LeanStd.Base.Data.Complex` | `Data.Complex` |
+| `LeanStd.Base.Data.Fixed` | `Data.Fixed` |
+| `LeanStd.Base.Control.Arrow` | `Control.Arrow` |
+| `LeanStd.Base.Control.Concurrent` | `Control.Concurrent` |
+| `LeanStd.Base.Control.Concurrent.MVar` | `Control.Concurrent.MVar` |
+| `LeanStd.Base.Control.Concurrent.Chan` | `Control.Concurrent.Chan` |
+| `LeanStd.Base.Control.Concurrent.QSem` | `Control.Concurrent.QSem` |
+| `LeanStd.Base.Control.Concurrent.QSemN` | `Control.Concurrent.QSemN` |
 
 ## Typing Philosophy
 

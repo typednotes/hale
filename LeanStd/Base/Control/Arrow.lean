@@ -9,10 +9,11 @@
   $$\text{Category} \to \text{Arrow} \to \text{ArrowChoice}$$
 -/
 
-import LeanStd.Base.Category
-import LeanStd.Base.Either
+import LeanStd.Base.Control.Category
+import LeanStd.Base.Data.Either
 
-namespace LeanStd
+namespace Control
+open Data
 
 /-- An `Arrow` is a `Category` with the ability to lift pure functions
     and apply them in parallel.
@@ -105,4 +106,4 @@ instance : ArrowChoice Fun where
     | .left a => f.apply a
     | .right b => g.apply b⟩
 
-end LeanStd
+end Control

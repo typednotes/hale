@@ -5,7 +5,7 @@
   Useful for accumulating in traversals.
 -/
 
-namespace LeanStd
+namespace Data.Functor
 
 /-- The **constant functor** $\text{Const}\;\alpha\;\beta$: carries a value of type $\alpha$,
     with a phantom type parameter $\beta$.
@@ -69,4 +69,4 @@ instance [Append α] [Inhabited α] : Pure (Const α) where
   pure _ := ⟨default⟩
 
 end Const
-end LeanStd
+end Data.Functor

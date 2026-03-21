@@ -1,7 +1,7 @@
 import LeanStd
 import Tests.Harness
 
-open LeanStd Tests
+open Control Tests
 
 namespace TestCategory
 

@@ -4,7 +4,7 @@
   Provides combinators for `Prod` with involution and isomorphism proofs.
 -/
 
-namespace LeanStd.Tuple
+namespace Data.Tuple
 
 /-- Swap the components of a pair.
     $$\text{swap}(a, b) = (b, a)$$
@@ -77,4 +77,4 @@ theorem mapFst_eq_bimap (f : α → γ) (p : α × β) :
 theorem mapSnd_eq_bimap (g : β → γ) (p : α × β) :
     mapSnd g p = bimap id g p := rfl
 
-end LeanStd.Tuple
+end Data.Tuple

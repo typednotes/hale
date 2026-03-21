@@ -4,7 +4,7 @@
   Provides `Down` for reversed ordering, `comparing`, and `clamp` with proof.
 -/
 
-namespace LeanStd
+namespace Data
 
 /-- `Down α` reverses the ordering of `α`.
 
@@ -69,4 +69,4 @@ def clamp [LE α] [DecidableRel (α := α) (· ≤ ·)] (x lo hi : α)
   else
     ⟨x, total x lo h₁, total hi x h₂⟩
 
-end LeanStd
+end Data

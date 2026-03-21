@@ -18,6 +18,11 @@ import Tests.Base.TestRatio
 import Tests.Base.TestComplex
 import Tests.Base.TestFixed
 import Tests.Base.TestArrow
+import Tests.Control.TestMVar
+import Tests.Control.TestChan
+import Tests.Control.TestQSem
+import Tests.Control.TestQSemN
+import Tests.Control.TestConcurrent
 
 open Tests
 
@@ -48,6 +53,19 @@ def main : IO UInt32 := do
 
   for (name, tests) in suites do
     let failures ← runTests name tests
+    totalFailures := totalFailures + failures
+
+  -- Phase 6: Concurrent IO test suites
+  let ioSuites : List (String × IO (List TestResult)) :=
+    [ ("MVar",       TestMVar.tests)
+    , ("Chan",       TestChan.tests)
+    , ("QSem",       TestQSem.tests)
+    , ("QSemN",      TestQSemN.tests)
+    , ("Concurrent", TestConcurrent.tests)
+    ]
+
+  for (name, testsIO) in ioSuites do
+    let failures ← runIOTests name testsIO
     totalFailures := totalFailures + failures
 
   IO.println ""

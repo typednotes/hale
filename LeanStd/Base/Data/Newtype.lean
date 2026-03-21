@@ -5,7 +5,7 @@
   Each with `Append`/`BEq`/`Ord` instances + associativity/identity proofs.
 -/
 
-namespace LeanStd
+namespace Data
 
 -- ══════════════════════════════════════════════
 -- Dual: reverses the semigroup operation
@@ -246,4 +246,4 @@ theorem Any.append_assoc (a b c : Any) :
   simp [HAppend.hAppend, Append.append, Any.mk.injEq]
   cases a.getAny <;> simp
 
-end LeanStd
+end Data

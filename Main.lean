@@ -1,6 +1,6 @@
 import LeanStd
 
-open LeanStd
+open Data Data.Function Data.Functor Data.List Data.Tuple Control Control.Concurrent
 
 def main : IO Unit := do
   -- ── Phase 0: Foundational ────────────────────
@@ -87,5 +87,41 @@ def main : IO Unit := do
   let f1 : Fixed 2 := Fixed.fromInt 3
   let f2 : Fixed 2 := ⟨157⟩  -- 1.57
   IO.println s!"Fixed 2: {f1} + {f2} = {f1 + f2}"
+
+  -- ── Phase 6: Concurrency ─────────────────────
+  IO.println "\n=== MVar ==="
+  let mv ← MVar.new 42
+  let v ← mv.takeSync
+  IO.println s!"MVar: took {v}"
+  mv.putSync 99
+  let v2 ← mv.readSync
+  IO.println s!"MVar: read {v2} (still full)"
+
+  IO.println "\n=== Chan ==="
+  let ch ← Chan.new Nat
+  ch.write 1
+  ch.write 2
+  ch.write 3
+  let a ← IO.wait (← ch.read)
+  let b ← IO.wait (← ch.read)
+  let c ← IO.wait (← ch.read)
+  IO.println s!"Chan: read {a}, {b}, {c} (FIFO)"
+
+  IO.println "\n=== QSem ==="
+  let sem ← QSem.new 2
+  IO.wait (← sem.wait)
+  IO.wait (← sem.wait)
+  sem.signal
+  IO.wait (← sem.wait)
+  sem.signal
+  sem.signal
+  IO.println "QSem: acquire/release cycle OK"
+
+  IO.println "\n=== forkIO ==="
+  let flag ← IO.mkRef false
+  let tid ← forkIO do flag.set true
+  waitThread tid
+  let done ← flag.get
+  IO.println s!"forkIO: thread completed = {done}"
 
   IO.println "\nAll smoke tests passed!"

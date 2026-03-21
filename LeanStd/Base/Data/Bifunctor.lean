@@ -5,7 +5,7 @@
   Instances for `Prod`, `Sum`, and `Except`.
 -/
 
-namespace LeanStd
+namespace Data
 
 /-- A **bifunctor** is a type constructor $F : \mathsf{Type} \to \mathsf{Type} \to \mathsf{Type}$
 that is functorial in both arguments. Given morphisms $f : \alpha \to \gamma$ and
@@ -77,4 +77,4 @@ instance : LawfulBifunctor Except where
   bimap_id x := by cases x <;> rfl
   bimap_comp _ _ _ _ x := by cases x <;> rfl
 
-end LeanStd
+end Data

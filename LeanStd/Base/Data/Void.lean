@@ -4,7 +4,7 @@
   Provides vacuous instances and `absurd` for the uninhabited type.
 -/
 
-namespace LeanStd
+namespace Data
 
 /-- The void type $\bot$ — uninhabited. Wraps Lean's `Empty`.
 
@@ -56,4 +56,4 @@ theorem eq_absurd (f : Void → α) : f = Void.absurd := by
   funext v; exact Empty.elim v
 
 end Void
-end LeanStd
+end Data

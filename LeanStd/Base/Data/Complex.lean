@@ -6,7 +6,7 @@
   $$z = a + bi \quad \text{where } a, b : \alpha$$
 -/
 
-namespace LeanStd
+namespace Data
 
 /-- A complex number $z = \text{re} + \text{im} \cdot i$ over a type `α`.
 
@@ -88,4 +88,4 @@ theorem add_comm' [Add α] (hc : ∀ a b : α, a + b = b + a) (z w : Complex α)
   exact ⟨hc z.re w.re, hc z.im w.im⟩
 
 end Complex
-end LeanStd
+end Data

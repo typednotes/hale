@@ -5,7 +5,7 @@
   the composition of two applicatives is an applicative.
 -/
 
-namespace LeanStd
+namespace Data.Functor
 
 /-- Functor/applicative composition: $(\text{Compose}\;F\;G)\;\alpha = F\,(G\;\alpha)$.
 
@@ -65,4 +65,4 @@ instance [Applicative F] [Applicative G] : Seq (Compose F G) where
 instance [Applicative F] [Applicative G] : Applicative (Compose F G) where
 
 end Compose
-end LeanStd
+end Data.Functor

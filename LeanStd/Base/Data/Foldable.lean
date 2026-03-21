@@ -9,10 +9,10 @@
   `foldMap`, `any`, `all`, `find?`, `elem`, `minimum?`, `maximum?`, `sum`, `product`.
 -/
 
-import LeanStd.Base.NonEmpty
-import LeanStd.Base.Either
+import LeanStd.Base.Data.List.NonEmpty
+import LeanStd.Base.Data.Either
 
-namespace LeanStd
+namespace Data
 
 /-- `Foldable` captures the pattern of folding a structure into a single value.
 
@@ -111,10 +111,10 @@ instance : Foldable Option where
     | some a => [a]
     | none => []
 
-instance : Foldable NonEmpty where
+instance : Foldable List.NonEmpty where
   foldr f z ne := f ne.head (ne.tail.foldr f z)
   foldl f z ne := ne.tail.foldl f (f z ne.head)
-  toList := NonEmpty.toList
+  toList := List.NonEmpty.toList
 
 instance : Foldable (Either α) where
   foldr f z
@@ -127,4 +127,4 @@ instance : Foldable (Either α) where
     | .right b => [b]
     | .left _ => []
 
-end LeanStd
+end Data
