@@ -26,7 +26,7 @@ Typeclass for structures that can be folded to a summary value. Provides a rich 
 ## Instances
 - `Foldable List`
 - `Foldable Option`
-- `Foldable NonEmpty`
+- `Foldable List.NonEmpty`
 - `Foldable (Either a)`
 
 ## Proofs & Guarantees

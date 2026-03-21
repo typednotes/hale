@@ -30,6 +30,10 @@ Non-empty list with a guaranteed minimum of one element. The `length` function r
 - `Bind NonEmpty`
 - `Monad NonEmpty`
 - `ToString (NonEmpty a)` (requires `ToString a`)
+- `BEq (NonEmpty a)` (derived)
+- `Ord (NonEmpty a)` (derived)
+- `Repr (NonEmpty a)` (derived)
+- `Hashable (NonEmpty a)` (derived)
 
 ## Proofs & Guarantees
 - `toList_ne_nil` — `toList ne != []` (the list is never empty)

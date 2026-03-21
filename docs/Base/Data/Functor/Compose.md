@@ -12,8 +12,8 @@ Composition of functors/applicatives. `Compose F G a` wraps `F (G a)`, allowing 
 
 ## Instances
 - `Functor (Compose F G)` (requires `Functor F`, `Functor G`)
-- `Pure (Compose F G)` (requires `Pure F`, `Pure G`)
-- `Seq (Compose F G)` (requires `Seq F`, `Seq G`, `Functor F`)
+- `Pure (Compose F G)` (requires `Applicative F`, `Applicative G`)
+- `Seq (Compose F G)` (requires `Applicative F`, `Applicative G`)
 - `Applicative (Compose F G)` (requires `Applicative F`, `Applicative G`)
 
 ## Proofs & Guarantees

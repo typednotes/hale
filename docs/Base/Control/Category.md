@@ -11,9 +11,11 @@ Abstract category with identity and composition. Uses diagrammatic order (`f >>>
 | `Category.id` | `id` | Method |
 | `Category.comp` / `>>>` | `>>>` | Method |
 | `Fun` | `(->)` | Type |
+| `LawfulCategory` class | *(lawful)* | Typeclass |
 
 ## Instances
 - `Category Fun` — the function arrow as a category
+- `LawfulCategory Fun` — all three laws hold definitionally
 
 ## Proofs & Guarantees
 - `id_comp` — `id >>> f = f` (via `LawfulCategory`)

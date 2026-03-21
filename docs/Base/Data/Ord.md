@@ -9,7 +9,7 @@ Ordering utilities. `Down` reverses the comparison order. `comparing` lifts comp
 |------|---------|------|
 | `Down` | `Down` | Type |
 | `comparing` | `comparing` | Function |
-| `clampWith` | `clamp` | Function (returns `{y // lo <= y /\ y <= hi}`) |
+| `clamp` | `clamp` | Function (returns `{y // lo <= y /\ y <= hi}`) |
 
 ## Instances
 - `BEq (Down a)` (requires `BEq a`)

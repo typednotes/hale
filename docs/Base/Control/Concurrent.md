@@ -14,6 +14,7 @@ Thread management primitives: forking lightweight threads, cooperative cancellat
 | `threadDelay` | `threadDelay` | Function |
 | `yield` | `yield` | Function |
 | `waitThread` | *(no direct equivalent)* | Function |
+| `PosNat` | *(no direct equivalent)* | Type (`{ n : Nat // n > 0 }`) |
 
 ## Differences from GHC
 
@@ -22,7 +23,7 @@ Thread management primitives: forking lightweight threads, cooperative cancellat
 | Thread model | Green threads with RTS scheduler | `IO.asTask` on Lean's thread pool |
 | Cancellation | Asynchronous exceptions (`throwTo`) | Cooperative `CancellationToken` |
 | `threadDelay` unit | Microseconds | Microseconds (converted internally to ms, rounded up) |
-| Thread ID uniqueness | Runtime-assigned, may be reused | Monotonic `Nat` counter, never reused |
+| Thread ID uniqueness | Runtime-assigned, may be reused | Monotonic `PosNat` counter (≥ 1), never reused |
 
 ## Instances
 - `BEq ThreadId` — equality by `id` field
@@ -35,7 +36,7 @@ Thread management primitives: forking lightweight threads, cooperative cancellat
 ```
 structure ThreadId where
   private mk ::
-  id : Nat                              -- unique, monotonic
+  id : PosNat                           -- unique, monotonic, >= 1
   private task : Task (Except IO.Error Unit)
   private cancelToken : Std.CancellationToken
 ```

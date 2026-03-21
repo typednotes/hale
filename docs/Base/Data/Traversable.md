@@ -17,6 +17,8 @@ Typeclass for structures that can be traversed with effects. Extends `Functor` b
 - `Traversable Option`
 - `Traversable NonEmpty`
 
+**Note:** `Either α` cannot have a `Traversable` instance due to universe constraints in Lean 4.
+
 ## Proofs & Guarantees
 - `traverse_identity` — traversing with the identity applicative is just `map` (via `LawfulTraversable`)
 

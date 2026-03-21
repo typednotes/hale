@@ -21,6 +21,10 @@ Complex numbers parameterized by coefficient type. Supports arithmetic operation
 - `Neg (Complex a)` (requires `Neg a`)
 - `Sub (Complex a)` (requires `Sub a`)
 - `Mul (Complex a)` (requires `Add a`, `Sub a`, `Mul a`)
+- `BEq (Complex a)` (derived)
+- `Ord (Complex a)` (derived)
+- `Repr (Complex a)` (derived)
+- `Hashable (Complex a)` (derived)
 
 ## Proofs & Guarantees
 - `conjugate_conjugate` — `conjugate (conjugate z) = z` (involution)

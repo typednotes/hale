@@ -4,5 +4,4 @@ Documentation for the `lean-std` library — a port of Haskell's `base` package 
 
 ## Modules
 
-- [Base/](Base/README.md) — Core modules ported from Haskell `base`
-- [Control/](Control/README.md) — Concurrency primitives (Phase 6)
+- [Base/](Base/README.md) — All modules ported from Haskell `base` (Phases 0–6)

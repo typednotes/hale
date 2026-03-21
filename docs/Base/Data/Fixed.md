@@ -18,6 +18,10 @@ Fixed-point decimal arithmetic. `Fixed p` stores integers scaled by `10^p`. Addi
 - `OfNat (Fixed p) 0` / `OfNat (Fixed p) 1`
 - `Inhabited (Fixed p)`
 - `ToString (Fixed p)`
+- `BEq (Fixed p)` (derived)
+- `Ord (Fixed p)` (derived)
+- `Repr (Fixed p)` (derived)
+- `Hashable (Fixed p)` (derived)
 
 ## Proofs & Guarantees
 - `scale_pos` — the scale factor `10^p` is always positive

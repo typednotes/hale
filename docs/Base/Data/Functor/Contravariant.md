@@ -11,6 +11,7 @@ Contravariant functors — types that consume values rather than produce them. W
 | `contramap` | `contramap` | Method |
 | `Predicate` | `Predicate` | Type |
 | `Equivalence` | `Equivalence` | Type |
+| `LawfulContravariant` class | *(lawful)* | Typeclass |
 
 ## Instances
 - `Contravariant Predicate`

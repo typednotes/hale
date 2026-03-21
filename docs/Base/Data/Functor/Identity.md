@@ -17,6 +17,12 @@ Identity functor/monad — trivial wrapper. Useful as a base case for monad tran
 - `Seq Identity`
 - `Applicative Identity`
 - `Monad Identity`
+- `BEq (Identity a)` (derived)
+- `Ord (Identity a)` (derived)
+- `Repr (Identity a)` (derived)
+- `Hashable (Identity a)` (derived)
+- `Inhabited (Identity a)` (derived)
+- `ToString (Identity a)`
 
 ## Proofs & Guarantees
 - `map_id` — `Functor.map id = id`
