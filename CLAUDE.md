@@ -343,6 +343,13 @@ When porting a Haskell library:
 4. **Lean stdlib preference:** When Lean's stdlib already provides equivalent functionality, use it as the backing implementation and provide Haskell-compatible naming on top.
 5. **Cross-platform C FFI / glibc wrappers:** When porting libraries that wrap OS/glibc facilities (sockets, file I/O, signals, etc.), get inspiration from **both** Haskell's implementation and **Lean's standard library** (`Init.System`, `Std.Internal`). Use `#ifdef` guards for platform-specific code (macOS/kqueue, Linux/epoll). Target macOS and Linux first; Windows support can be added later. Always return proper `IO.Error` from C FFI — never crash or segfault.
 6. **FFI preferred for glibc, implementation preferred otherwise:** C FFI should be the default approach for wrapping glibc/OS system calls (sockets, file descriptors, signals, process management, etc.) — these are inherently C APIs and FFI gives the best fidelity. For everything else (protocol logic, data structures, algorithms, type-level guarantees), prefer a native Lean implementation. This gives us proofs, type safety, and platform independence where it matters most.
+7. **Maximalist typing for FFI protocols:** When an FFI-wrapped resource implements a protocol (TCP, QUIC, HTTP/2, etc.), the Lean types should encode the main constraints and guarantees of the protocol. For example: a socket in LISTEN state should have a different type than a connected socket; a QUIC stream ID should carry its directionality (client/server, bidi/uni) in the type; an HTTP/2 stream should encode its lifecycle state. Use opaque types, phantom type parameters, and proof obligations to make protocol violations unrepresentable.
+8. **Align with official Lean FFI patterns:** Follow the Lean 4 standard library's C FFI conventions exactly. Reference implementation: [Std.Internal.Async.TCP](https://github.com/leanprover/lean4/blob/8f6411ad576cc0bec3e9a891c60df223da300a71/stage0/stdlib/Std/Internal/Async/TCP.c#L58). Key patterns:
+   - Use `lean_alloc_external` with `lean_register_external_class` for opaque OS handles (sockets, file descriptors, event loops) — NOT `lean_box(fd)` / `USize`
+   - Register a finalizer that closes the resource on GC (e.g., `close(fd)`)
+   - Use `lean_get_external_data` to extract the handle in C functions
+   - Declare the Lean type as `opaque FooHandle : NonemptyType` / `def Foo := FooHandle.type`
+   - FFI functions take `@& Foo` (borrowed reference) or `Foo` (owned)
 
 ## Haskell Cross-Verification
 

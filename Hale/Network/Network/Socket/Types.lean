@@ -12,7 +12,13 @@
   - `EventType`: readable, writable, error flags
   - `EventLoop`: opaque event multiplexing handle (kqueue/epoll)
   - `SockAddr`: host + port
-  - `Socket`: raw fd wrapper
+  - `Socket`: opaque socket handle (lean_alloc_external)
+
+  ## Design
+
+  Socket and EventLoop are opaque types backed by POSIX file descriptors
+  managed via `lean_alloc_external` with automatic cleanup on GC.
+  This follows the same pattern as Lean's `IO.FS.Handle`.
 -/
 
 namespace Network.Socket
@@ -106,14 +112,14 @@ def hasError (e : EventType) : Bool := (e.flags &&& 4) != 0
 
 end EventType
 
-/-- An opaque handle to an event loop (kqueue on macOS, epoll on Linux).
-    $$\text{EventLoop} = \{ \text{fd} : \text{USize} \}$$
+/-- Opaque event loop handle (kqueue on macOS, epoll on Linux).
+    Backed by a POSIX file descriptor managed via `lean_alloc_external`
+    with automatic cleanup on GC.
 
-    The fd is a kernel file descriptor for the event multiplexer.
-    Managed by `withEventLoop` for safe cleanup. -/
-structure EventLoop where
-  fd : USize
-deriving BEq, Repr
+    Following the same pattern as Lean's `IO.FS.Handle`. -/
+opaque EventLoopHandle : NonemptyType
+def EventLoop : Type := EventLoopHandle.type
+instance : Nonempty EventLoop := EventLoopHandle.property
 
 /-- A ready event: which socket fd became ready, and what events fired. -/
 structure ReadyEvent where
@@ -139,17 +145,12 @@ structure AddrInfo where
   port : Nat
 deriving Repr
 
-/-- A raw socket file descriptor.
-    $$\text{Socket} = \{ \text{fd} : \text{USize} \}$$
+/-- Opaque socket handle. Backed by a POSIX file descriptor managed via
+    `lean_alloc_external` with automatic cleanup on GC.
 
-    The file descriptor is an opaque handle to a POSIX socket.
-    Socket lifetime is managed by `withSocket` or explicit `close`. -/
-structure Socket where
-  /-- The underlying file descriptor. -/
-  fd : USize
-deriving BEq, Repr
-
-instance : ToString Socket where
-  toString s := s!"Socket({s.fd})"
+    Following the same pattern as Lean's `IO.FS.Handle`. -/
+opaque SocketHandle : NonemptyType
+def Socket : Type := SocketHandle.type
+instance : Nonempty Socket := SocketHandle.property
 
 end Network.Socket

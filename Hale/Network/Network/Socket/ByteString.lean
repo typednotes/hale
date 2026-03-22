@@ -33,14 +33,14 @@ def recv (s : Socket) (maxlen : Nat := 4096) : IO ByteArray :=
     Returns the number of bytes sent.
     $$\text{sendTo} : \text{Socket} \to \text{ByteArray} \to \text{SockAddr} \to \text{IO}(\mathbb{N})$$ -/
 def sendTo (s : Socket) (data : ByteArray) (addr : SockAddr) : IO Nat := do
-  let n ← FFI.socketSendTo s.fd data addr.host addr.port
+  let n ← FFI.socketSendTo s data addr.host addr.port
   pure n.toNat
 
 /-- Receive a UDP datagram with sender address.
     Returns the data and the sender's address.
     $$\text{recvFrom} : \text{Socket} \to \mathbb{N} \to \text{IO}(\text{ByteArray} \times \text{SockAddr})$$ -/
 def recvFrom (s : Socket) (maxlen : Nat := 4096) : IO (ByteArray × SockAddr) := do
-  let (data, host, port) ← FFI.socketRecvFrom s.fd maxlen.toUSize
+  let (data, host, port) ← FFI.socketRecvFrom s maxlen.toUSize
   pure (data, ⟨host, port.toNat.toUInt16⟩)
 
 end Network.Socket.BS

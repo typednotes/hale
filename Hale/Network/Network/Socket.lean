@@ -9,6 +9,10 @@
   Wraps the raw FFI bindings with a clean API matching Haskell's `Network.Socket`.
   Supports IPv4, IPv6, UDP, and event multiplexing (kqueue/epoll).
 
+  Socket and EventLoop are opaque types backed by `lean_alloc_external`.
+  The GC finalizer automatically closes file descriptors, but explicit
+  `close` is preferred for deterministic resource management.
+
   ## Guarantees
 
   - `withSocket` ensures sockets are closed even on exceptions (try/finally)
@@ -29,14 +33,14 @@ open Network.Socket.FFI
 
 /-- Create a new socket.
     $$\text{socket} : \text{Family} \to \text{SocketType} \to \text{IO}(\text{Socket})$$ -/
-def socket (fam : Family) (typ : SocketType) : IO Socket := do
-  let fd ← socketCreate fam.toUInt8 typ.toUInt8
-  pure ⟨fd⟩
+def socket (fam : Family) (typ : SocketType) : IO Socket :=
+  socketCreate fam.toUInt8 typ.toUInt8
 
-/-- Close a socket.
+/-- Close a socket. The fd is also closed by the GC finalizer, but
+    explicit close is preferred for deterministic resource release.
     $$\text{close} : \text{Socket} \to \text{IO}(\text{Unit})$$ -/
 @[inline] def close (s : Socket) : IO Unit :=
-  socketClose s.fd
+  socketClose s
 
 /-- Run an action with a socket, ensuring it is closed afterwards.
     $$\text{withSocket} : \text{Family} \to \text{SocketType} \to (\text{Socket} \to \text{IO}(\alpha)) \to \text{IO}(\alpha)$$ -/
@@ -54,41 +58,40 @@ def withSocket (fam : Family) (typ : SocketType) (f : Socket → IO α) : IO α 
 /-- Bind a socket to an address.
     $$\text{bind} : \text{Socket} \to \text{SockAddr} \to \text{IO}(\text{Unit})$$ -/
 @[inline] def bind (s : Socket) (addr : SockAddr) : IO Unit :=
-  socketBind s.fd addr.host addr.port
+  socketBind s addr.host addr.port
 
 /-- Start listening for connections.
     $$\text{listen} : \text{Socket} \to \mathbb{N} \to \text{IO}(\text{Unit})$$ -/
 @[inline] def listen (s : Socket) (backlog : Nat := 128) : IO Unit :=
-  socketListen s.fd backlog.toUSize
+  socketListen s backlog.toUSize
 
 /-- Accept a connection. Returns the client socket and remote address.
-    $$\text{accept} : \text{Socket} \to \text{IO}(\text{Socket} \times \text{SockAddr})$$
-
-    The C FFI returns `(USize × (String × USize))` as nested pairs. -/
+    $$\text{accept} : \text{Socket} \to \text{IO}(\text{Socket} \times \text{SockAddr})$$ -/
 def accept (s : Socket) : IO (Socket × SockAddr) := do
-  let (fd, host, port) ← socketAccept s.fd
-  pure (⟨fd⟩, ⟨host, port.toNat.toUInt16⟩)
+  let clientSock ← socketAccept s
+  let (host, port) ← FFI.getPeerName clientSock
+  pure (clientSock, ⟨host, port.toNat.toUInt16⟩)
 
 /-- Connect to a remote address.
     $$\text{connect} : \text{Socket} \to \text{SockAddr} \to \text{IO}(\text{Unit})$$ -/
 @[inline] def connect (s : Socket) (addr : SockAddr) : IO Unit :=
-  socketConnect s.fd addr.host addr.port
+  socketConnect s addr.host addr.port
 
 /-- Send a ByteArray on the socket. Returns bytes sent.
     $$\text{send} : \text{Socket} \to \text{ByteArray} \to \text{IO}(\mathbb{N})$$ -/
 @[inline] def send (s : Socket) (data : ByteArray) : IO Nat := do
-  let n ← socketSend s.fd data
+  let n ← socketSend s data
   pure n.toNat
 
 /-- Receive up to `maxlen` bytes from the socket.
     $$\text{recv} : \text{Socket} \to \mathbb{N} \to \text{IO}(\text{ByteArray})$$ -/
 @[inline] def recv (s : Socket) (maxlen : Nat := 4096) : IO ByteArray :=
-  socketRecv s.fd maxlen.toUSize
+  socketRecv s maxlen.toUSize
 
 /-- Shutdown a socket for reading, writing, or both.
     $$\text{shutdown} : \text{Socket} \to \text{ShutdownHow} \to \text{IO}(\text{Unit})$$ -/
 @[inline] def shutdown (s : Socket) (how : ShutdownHow) : IO Unit :=
-  socketShutdown s.fd how.toUInt8
+  socketShutdown s how.toUInt8
 
 -- ══════════════════════════════════════════════════════════════
 -- Socket options
@@ -96,32 +99,32 @@ def accept (s : Socket) : IO (Socket × SockAddr) := do
 
 /-- Set the SO_REUSEADDR option. -/
 @[inline] def setReuseAddr (s : Socket) (enable : Bool := true) : IO Unit :=
-  FFI.setReuseAddr s.fd (if enable then 1 else 0)
+  FFI.setReuseAddr s (if enable then 1 else 0)
 
 /-- Set the TCP_NODELAY option. -/
 @[inline] def setNoDelay (s : Socket) (enable : Bool := true) : IO Unit :=
-  FFI.setNoDelay s.fd (if enable then 1 else 0)
+  FFI.setNoDelay s (if enable then 1 else 0)
 
 /-- Set non-blocking mode. -/
 @[inline] def setNonBlocking (s : Socket) (enable : Bool := true) : IO Unit :=
-  FFI.setNonBlocking s.fd (if enable then 1 else 0)
+  FFI.setNonBlocking s (if enable then 1 else 0)
 
 /-- Set the SO_KEEPALIVE option. -/
 @[inline] def setKeepAlive (s : Socket) (enable : Bool := true) : IO Unit :=
-  FFI.setKeepAlive s.fd (if enable then 1 else 0)
+  FFI.setKeepAlive s (if enable then 1 else 0)
 
 /-- Set the SO_LINGER option.
     When enabled, `close` will block for up to `seconds` to flush pending data. -/
 @[inline] def setLinger (s : Socket) (enable : Bool) (seconds : Nat := 0) : IO Unit :=
-  FFI.setLinger s.fd (if enable then 1 else 0) seconds.toUSize
+  FFI.setLinger s (if enable then 1 else 0) seconds.toUSize
 
 /-- Set the receive buffer size (SO_RCVBUF). -/
 @[inline] def setRecvBufSize (s : Socket) (size : Nat) : IO Unit :=
-  FFI.setRecvBuf s.fd size.toUSize
+  FFI.setRecvBuf s size.toUSize
 
 /-- Set the send buffer size (SO_SNDBUF). -/
 @[inline] def setSendBufSize (s : Socket) (size : Nat) : IO Unit :=
-  FFI.setSendBuf s.fd size.toUSize
+  FFI.setSendBuf s size.toUSize
 
 -- ══════════════════════════════════════════════════════════════
 -- Address introspection
@@ -130,13 +133,13 @@ def accept (s : Socket) : IO (Socket × SockAddr) := do
 /-- Get the remote peer's address.
     $$\text{getPeerName} : \text{Socket} \to \text{IO}(\text{SockAddr})$$ -/
 def getPeerName (s : Socket) : IO SockAddr := do
-  let (host, port) ← FFI.getPeerName s.fd
+  let (host, port) ← FFI.getPeerName s
   pure ⟨host, port.toNat.toUInt16⟩
 
 /-- Get the socket's locally-bound address.
     $$\text{getSockName} : \text{Socket} \to \text{IO}(\text{SockAddr})$$ -/
 def getSockName (s : Socket) : IO SockAddr := do
-  let (host, port) ← FFI.getSockName s.fd
+  let (host, port) ← FFI.getSockName s
   pure ⟨host, port.toNat.toUInt16⟩
 
 -- ══════════════════════════════════════════════════════════════
@@ -182,30 +185,29 @@ namespace EventLoop
 
 /-- Create a new event loop.
     $$\text{create} : \text{IO}(\text{EventLoop})$$ -/
-def create : IO EventLoop := do
-  let fd ← FFI.eventLoopCreate
-  pure ⟨fd⟩
+def create : IO EventLoop :=
+  FFI.eventLoopCreate
 
 /-- Close an event loop.
     $$\text{close} : \text{EventLoop} \to \text{IO}(\text{Unit})$$ -/
 @[inline] def close (el : EventLoop) : IO Unit :=
-  FFI.eventLoopClose el.fd
+  FFI.eventLoopClose el
 
 /-- Register interest in events for a socket.
     $$\text{add} : \text{EventLoop} \to \text{Socket} \to \text{EventType} \to \text{IO}(\text{Unit})$$ -/
 @[inline] def add (el : EventLoop) (s : Socket) (events : EventType) : IO Unit :=
-  FFI.eventLoopAdd el.fd s.fd events.flags
+  FFI.eventLoopAdd el s events.flags
 
 /-- Unregister a socket from the event loop.
     $$\text{del} : \text{EventLoop} \to \text{Socket} \to \text{IO}(\text{Unit})$$ -/
 @[inline] def del (el : EventLoop) (s : Socket) : IO Unit :=
-  FFI.eventLoopDel el.fd s.fd
+  FFI.eventLoopDel el s
 
 /-- Wait for events with a timeout (in milliseconds).
     Returns a list of ready events.
     $$\text{wait} : \text{EventLoop} \to \text{Nat} \to \text{IO}(\text{List}\ \text{ReadyEvent})$$ -/
 def wait (el : EventLoop) (timeoutMs : Nat := 1000) : IO (List ReadyEvent) := do
-  let results ← FFI.eventLoopWait el.fd timeoutMs.toUSize
+  let results ← FFI.eventLoopWait el timeoutMs.toUSize
   pure (results.map fun (fd, evts) => ⟨fd, ⟨evts⟩⟩)
 
 end EventLoop

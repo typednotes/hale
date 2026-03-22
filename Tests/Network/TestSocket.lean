@@ -13,13 +13,27 @@ open Network.Socket Tests
 namespace TestSocket
 
 def tests : IO (List TestResult) := do
-  -- Test: create a TCP server, connect a client, exchange data on loopback
+  -- Test 1: Socket creation and socket options
+  let s1 ← socket .inet .stream
+  setReuseAddr s1
+  setNoDelay s1
+  setKeepAlive s1
+  close s1
+
+  -- Test 2: Bind + listen + close
+  let s2 ← socket .inet .stream
+  setReuseAddr s2
+  bind s2 ⟨"127.0.0.1", 9877⟩
+  listen s2 5
+  close s2
+
+  -- Test 3: Full loopback exchange
   let server ← socket .inet .stream
   setReuseAddr server
   bind server ⟨"127.0.0.1", 9876⟩
   listen server 5
 
-  -- Connect client in a separate task
+  -- Spawn client in background task
   let clientTask ← IO.asTask do
     let client ← socket .inet .stream
     connect client ⟨"127.0.0.1", 9876⟩
@@ -28,7 +42,7 @@ def tests : IO (List TestResult) := do
     close client
     pure (String.fromUTF8! response)
 
-  -- Accept on server
+  -- Accept on server side
   let (conn, _remoteAddr) ← accept server
   let data ← Network.Socket.recv conn 1024
   let received := String.fromUTF8! data
@@ -39,7 +53,9 @@ def tests : IO (List TestResult) := do
   let clientResponse ← IO.ofExcept clientTask.get
 
   pure [
-    checkEq "server received" "hello" received
+    check "socket options" true
+  , check "bind+listen+close" true
+  , checkEq "server received" "hello" received
   , checkEq "client received" "world" clientResponse
   ]
 

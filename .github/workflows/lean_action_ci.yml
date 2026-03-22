@@ -12,3 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: leanprover/lean-action@v1
+        with:
+          build-args: ""
+      - name: Build FFI
+        run: bash ffi/build.sh
+      - name: Build library
+        run: lake build
+      - name: Build tests
+        run: lake build hale-tests
+      - name: Run tests
+        run: lake exe hale-tests
