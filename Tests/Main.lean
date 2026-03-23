@@ -40,6 +40,7 @@ import Tests.Control.TestQSem
 import Tests.Control.TestQSemN
 import Tests.Control.TestConcurrent
 import Tests.Control.TestScheduler
+import Tests.Control.TestGreen
 import Tests.Control.TestException
 -- System
 import Tests.System.TestSysIO
@@ -193,6 +194,7 @@ def main : IO UInt32 := do
   totalFailures := totalFailures + (← runIO "Exception"   fun () => TestException.tests)
   -- Scheduler tests (green threads) — run early to catch regressions fast
   totalFailures := totalFailures + (← runIO "Scheduler"   fun () => TestScheduler.tests)
+  totalFailures := totalFailures + (← runIO "Green"        fun () => TestGreen.tests)
   totalFailures := totalFailures + (← runIO "Vault"       fun () => TestVault.tests)
   totalFailures := totalFailures + (← runIO "UnliftIO"    fun () => TestUnliftIO.tests)
   totalFailures := totalFailures + (← runIO "Clock"       fun () => TestClock.tests)

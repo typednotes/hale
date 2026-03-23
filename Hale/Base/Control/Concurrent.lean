@@ -28,6 +28,7 @@
 
 import Hale.Base.Control.Concurrent.MVar
 import Hale.Base.Control.Concurrent.Scheduler
+import Hale.Base.Control.Concurrent.Green
 import Std.Sync.CancellationToken
 
 namespace Control.Concurrent
@@ -142,6 +143,34 @@ def threadDelay (μs : Nat) : BaseIO Unit :=
 
 $$\text{yield} : \text{BaseIO}\ \text{Unit}$$ -/
 def yield : BaseIO Unit := IO.sleep 0
+
+/-! ### Fair green threads -/
+
+/-- Fork a fair green thread.  The `Green` computation never blocks pool
+threads when awaiting — suspensions use `BaseIO.bindTask` to register
+continuations, freeing the pool thread for other work.
+
+$$\text{forkGreen} : \text{Green}\ \text{Unit} \to \text{IO}\ \text{ThreadId}$$
+
+Use `Green.await`, `Green.takeMVar`, etc. inside the action to suspend
+without blocking.
+
+See `Hale.Control.Concurrent.Green` for termination, liveness, and
+fairness guarantees. -/
+def forkGreen (action : Green.Green Unit) : IO ThreadId := do
+  let tid ← freshThreadId
+  let token ← Std.CancellationToken.new
+  let task ← Green.Green.run action token
+  pure { id := tid, task := task, cancelToken := token }
+
+/-- Await a thread's completion inside a `Green` computation, without
+blocking the pool thread.
+
+$$\text{waitThreadGreen} : \text{ThreadId} \to \text{Green.Green}\ \text{Unit}$$ -/
+def waitThreadGreen (tid : ThreadId) : Green.Green Unit :=
+  Green.Green.await tid.task >>= fun
+    | .ok ()   => pure ()
+    | .error e => throw e
 
 /-! ### Waiting -/
 
