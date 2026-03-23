@@ -56,4 +56,18 @@ structure Settings where
     $$\text{defaultSettings} = \text{Settings}\{\}$$ -/
 def defaultSettings : Settings := {}
 
+/-- Validated Warp settings. Encodes that:
+    - timeout > 0 (zero timeout would immediately close connections)
+    - backlog > 0 (zero backlog would reject all connections)
+    Does not replace `Settings` in the API — use alongside for validation. -/
+structure ValidSettings where
+  settings : Settings
+  timeout_pos : settings.settingsTimeout > 0 := by omega
+  backlog_pos : settings.settingsBacklog > 0 := by omega
+
+/-- The default settings are valid: timeout = 30 > 0 and backlog = 128 > 0. -/
+theorem defaultSettings_valid : (defaultSettings).settingsTimeout > 0 ∧
+    (defaultSettings).settingsBacklog > 0 := by
+  simp [defaultSettings]
+
 end Network.Wai.Handler.Warp

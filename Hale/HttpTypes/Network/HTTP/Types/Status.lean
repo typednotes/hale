@@ -114,4 +114,22 @@ def serviceUnavailable503 : Status := status503
 /-- Is this a 5xx status? -/
 @[inline] def Status.isServerError (s : Status) : Bool := s.statusCode / 100 == 5
 
+-- ── Well-formedness theorems ──
+
+/-- All standard status codes are in the valid HTTP range [100, 599]. -/
+theorem status200_valid : 100 ≤ status200.statusCode ∧ status200.statusCode ≤ 599 := by
+  simp [status200]
+
+theorem status404_valid : 100 ≤ status404.statusCode ∧ status404.statusCode ≤ 599 := by
+  simp [status404]
+
+theorem status500_valid : 100 ≤ status500.statusCode ∧ status500.statusCode ≤ 599 := by
+  simp [status500]
+
+theorem status100_valid : 100 ≤ status100.statusCode ∧ status100.statusCode ≤ 599 := by
+  simp [status100]
+
+theorem status301_valid : 100 ≤ status301.statusCode ∧ status301.statusCode ≤ 599 := by
+  simp [status301]
+
 end Network.HTTP.Types

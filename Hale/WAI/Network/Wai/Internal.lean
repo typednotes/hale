@@ -128,7 +128,12 @@ end Response
 /-- A WAI application.
     $$\text{Application} = \text{Request} \to (\text{Response} \to \text{IO}(\text{ResponseReceived})) \to \text{IO}(\text{ResponseReceived})$$
 
-    The CPS style ensures the response callback is invoked exactly once. -/
+    **Linearity invariant (axiom-dependent):** The response callback `respond`
+    must be invoked exactly once. The `ResponseReceived` return type ensures
+    that the callback WAS invoked (the application must return the token),
+    but cannot prevent double invocation at the type level without linear types.
+
+    This matches Haskell WAI's contract. -/
 abbrev Application := Request → (Response → IO ResponseReceived) → IO ResponseReceived
 
 /-- A WAI middleware transforms an application.

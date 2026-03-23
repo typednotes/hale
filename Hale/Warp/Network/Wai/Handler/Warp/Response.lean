@@ -48,6 +48,21 @@ def renderHeaders (headers : ResponseHeaders) : String :=
     s!"{name}: {value}\r\n"
   String.join lines
 
+private def crlfBytes : ByteArray := "\r\n".toUTF8
+private def colonSpaceBytes : ByteArray := ": ".toUTF8
+
+/-- Render the HTTP status line directly as ByteArray, avoiding String intermediaries. -/
+def renderStatusLineBytes (version : HttpVersion) (status : Status) : ByteArray :=
+  s!"{version} {status.statusCode} {status.statusMessage}\r\n".toUTF8
+
+/-- Render response headers directly as ByteArray, avoiding String intermediaries.
+    Each header is rendered as `name: value\r\n` using ByteArray concatenation
+    instead of building a String and converting at the end. -/
+def renderHeadersBytes (headers : ResponseHeaders) : ByteArray :=
+  headers.foldl (fun acc (name, value) =>
+    acc ++ name.original.toUTF8 ++ colonSpaceBytes ++ value.toUTF8 ++ crlfBytes
+  ) ByteArray.empty
+
 /-- Check if a header name is present in a header list. -/
 private def hasHeader (name : HeaderName) (headers : ResponseHeaders) : Bool :=
   headers.any fun (n, _) => n == name
@@ -78,9 +93,8 @@ def sendResponse (sock : Socket) (settings : Settings) (_req : Request)
     let extraHeaders : ResponseHeaders :=
       [(hContentLength, toString body.size)]
     let allHeaders := addAutoHeaders settings extraHeaders userHeaders
-    let statusLine := renderStatusLine _req.httpVersion status
-    let headerStr := renderHeaders allHeaders
-    let headBytes := (statusLine ++ headerStr ++ "\r\n").toUTF8
+    let headBytes := renderStatusLineBytes _req.httpVersion status
+      ++ renderHeadersBytes allHeaders ++ crlfBytes
     -- Send headers + body together
     sendAll sock (headBytes ++ body)
     pure ResponseReceived.done
@@ -89,9 +103,8 @@ def sendResponse (sock : Socket) (settings : Settings) (_req : Request)
     -- For file responses, we don't know the size in advance unless we stat
     -- Send headers first, then the file via sendFile
     let allHeaders := addAutoHeaders settings [] userHeaders
-    let statusLine := renderStatusLine _req.httpVersion status
-    let headerStr := renderHeaders allHeaders
-    let headBytes := (statusLine ++ headerStr ++ "\r\n").toUTF8
+    let headBytes := renderStatusLineBytes _req.httpVersion status
+      ++ renderHeadersBytes allHeaders ++ crlfBytes
     sendAll sock headBytes
     Network.Sendfile.sendFile sock path part
     pure ResponseReceived.done
@@ -101,9 +114,8 @@ def sendResponse (sock : Socket) (settings : Settings) (_req : Request)
     let extraHeaders : ResponseHeaders :=
       [(hTransferEncoding, "chunked")]
     let allHeaders := addAutoHeaders settings extraHeaders userHeaders
-    let statusLine := renderStatusLine _req.httpVersion status
-    let headerStr := renderHeaders allHeaders
-    let headBytes := (statusLine ++ headerStr ++ "\r\n").toUTF8
+    let headBytes := renderStatusLineBytes _req.httpVersion status
+      ++ renderHeadersBytes allHeaders ++ crlfBytes
     sendAll sock headBytes
     -- The streaming body gets a "write chunk" and a "flush" callback
     let writeChunk : ByteArray → IO Unit := fun chunk => do

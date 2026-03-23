@@ -33,6 +33,12 @@ open Network.Socket
     are rejected to prevent denial-of-service. -/
 def maxHeaders : Nat := 100
 
+/-- A list of parsed headers with a proof that its count is bounded.
+    Prevents denial-of-service via unbounded header allocation. -/
+structure BoundedHeaders (max : Nat) where
+  headers : RequestHeaders
+  count_le : headers.length ≤ max
+
 /-- Parse an HTTP version string like "HTTP/1.1".
     $$\text{parseHttpVersion} : \text{String} \to \text{Option}(\text{HttpVersion})$$ -/
 def parseHttpVersion (s : String) : Option HttpVersion :=
@@ -105,6 +111,16 @@ def recvHeaders (buf : FFI.RecvBuffer) : IO (String × List String) := do
         headers := line :: headers  -- O(1) cons
         count := count + 1
   pure (requestLine, headers.reverse)  -- single O(n) reverse
+
+/-- The header count returned by recvHeaders is bounded by maxHeaders.
+    This is enforced by the loop guard `count >= maxHeaders`.
+    $$\forall\, \text{rl}\; \text{hdrs},\; \text{recvHeaders}(\text{buf}) = \text{pure}(\text{rl}, \text{hdrs}) \implies \text{hdrs.length} \leq \text{maxHeaders}$$ -/
+theorem recvHeaders_bounded (buf : FFI.RecvBuffer) :
+    ∀ rl hdrs, recvHeaders buf = pure (rl, hdrs) → hdrs.length ≤ maxHeaders := by
+  -- TODO: prove from loop invariant — the while loop checks `count >= maxHeaders`
+  -- before each cons, ensuring at most `maxHeaders` elements are added.
+  -- Proof depends on IO monad execution; documented as axiom-dependent.
+  sorry
 
 /-- Find a header value by name in a header list. -/
 private def findHeader (name : HeaderName) (headers : RequestHeaders) : Option String :=

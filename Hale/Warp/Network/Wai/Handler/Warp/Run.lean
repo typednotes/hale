@@ -55,6 +55,24 @@ def connAction (req : Network.Wai.Request) : ConnAction :=
   else
     if connHdr == some "keep-alive" then .keepAlive else .close
 
+/-- HTTP/1.0 without Connection header defaults to close.
+    $$\forall\, \text{req},\; \text{req.httpVersion} \neq \text{HTTP/1.1} \land \text{Connection} \notin \text{headers} \implies \text{connAction}(\text{req}) = \text{close}$$ -/
+theorem connAction_http10_default (req : Network.Wai.Request)
+    (hVer : (req.httpVersion == http11) = false)
+    (hNoConn : req.requestHeaders.find? (fun (n, _) => n == hConnection) = none) :
+    connAction req = .close := by
+  unfold connAction
+  simp [hVer, hNoConn]
+
+/-- HTTP/1.1 without Connection header defaults to keep-alive.
+    $$\forall\, \text{req},\; \text{req.httpVersion} = \text{HTTP/1.1} \land \text{Connection} \notin \text{headers} \implies \text{connAction}(\text{req}) = \text{keepAlive}$$ -/
+theorem connAction_http11_default (req : Network.Wai.Request)
+    (hVer : (req.httpVersion == http11) = true)
+    (hNoConn : req.requestHeaders.find? (fun (n, _) => n == hConnection) = none) :
+    connAction req = .keepAlive := by
+  unfold connAction
+  simp [hVer, hNoConn]
+
 /-- Handle a single HTTP connection with keep-alive support.
     Creates a RecvBuffer once, loops over requests until close.
     $$\text{runConnection} : \text{Socket} \to \text{SockAddr} \to \text{Settings} \to \text{Application} \to \text{IO}(\text{Unit})$$ -/
@@ -77,10 +95,15 @@ partial def runConnection (clientSock : Socket) (remoteAddr : SockAddr)
           sendResponse clientSock settings req resp'
         -- Drain any unread body bytes before next request
         if action == .keepAlive then
-          let mut bodyDone := false
-          while !bodyDone do
-            let chunk ← req.requestBody
-            if chunk.isEmpty then bodyDone := true
+          -- Only drain body if there are unread bytes
+          match req.requestBodyLength with
+          | none => pure ()      -- No Content-Length → no body to drain
+          | some 0 => pure ()    -- Empty body
+          | some _ =>
+            let mut bodyDone := false
+            while !bodyDone do
+              let chunk ← req.requestBody
+              if chunk.isEmpty then bodyDone := true
         else
           keepGoing := false
   catch e =>

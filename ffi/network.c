@@ -465,6 +465,10 @@ LEAN_EXPORT lean_obj_res hale_socket_accept(b_lean_obj_arg sock) {
     if (client < 0) {
         return mk_io_errno_error();
     }
+    /* Set TCP_NODELAY on the accepted socket to disable Nagle's algorithm.
+     * This eliminates 40ms delays for small HTTP responses. */
+    int one = 1;
+    setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     /* Return just the client socket — use getpeername for address */
     return lean_io_result_mk_ok(mk_socket(client));
 }
