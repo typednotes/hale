@@ -2,6 +2,8 @@
 
 **Lean:** `Hale.ByteString` | **Haskell:** `bytestring` (https://hackage.haskell.org/package/bytestring)
 
+> **API Reference:** [Hale.ByteString](../../Hale/ByteString.html)
+
 ## Overview
 
 Port of Haskell's `bytestring` library to Lean 4 with maximalist typing. Provides:

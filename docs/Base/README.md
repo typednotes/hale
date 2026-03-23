@@ -1,5 +1,7 @@
 # Hale.Base — Haskell `base` for Lean 4
 
+> **API Reference:** [Hale.Base](../../Hale/Base.html)
+
 Re-exports all Base sub-modules.
 
 ## Design Philosophy (Concurrency)
