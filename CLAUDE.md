@@ -366,6 +366,29 @@ Reference: Transitive dependencies (new)
 | `Hale.AnsiTerminal.System.Console.ANSI` | `System.Console.ANSI` |
 | `Hale.PSQueues.Data.IntPSQ` | `Data.IntPSQ` |
 
+Reference: https://hackage.haskell.org/package/websockets
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.WebSockets.Network.WebSockets.Types` | `Network.WebSockets` (types) |
+| `Hale.WebSockets.Network.WebSockets.Frame` | `Network.WebSockets` (framing) |
+| `Hale.WebSockets.Network.WebSockets.Handshake` | `Network.WebSockets` (handshake) |
+| `Hale.WebSockets.Network.WebSockets.Connection` | `Network.WebSockets.Connection` |
+
+Reference: https://hackage.haskell.org/package/wai-websockets
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.WaiWebSockets.Network.Wai.Handler.WebSockets` | `Network.Wai.Handler.WebSockets` |
+
+Reference: https://hackage.haskell.org/package/wai-app-static
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.WaiAppStatic.WaiAppStatic.Types` | `WaiAppStatic.Types` |
+| `Hale.WaiAppStatic.WaiAppStatic.Storage.Filesystem` | `WaiAppStatic.Storage.Filesystem` |
+| `Hale.WaiAppStatic.Network.Wai.Application.Static` | `Network.Wai.Application.Static` |
+
 ## Folder Organization Policy
 
 The `Hale` project ports multiple Haskell libraries. Each Haskell library gets its own **top-level folder** named after the library (Lean naming convention). Within that folder, the **subfolder path mirrors the Haskell module path** exactly.

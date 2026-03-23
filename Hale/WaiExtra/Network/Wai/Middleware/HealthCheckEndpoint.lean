@@ -21,4 +21,12 @@ def healthCheck (path : String := "/_health") : Middleware :=
     else
       app req respond
 
+/-- Non-health-check requests pass through unchanged.
+    $$\text{req.rawPathInfo} \ne \text{path} \implies \text{healthCheck}(\text{path})(\text{app}, \text{req}) = \text{app}(\text{req})$$ -/
+theorem healthCheck_passthrough (path : String) (app : Application) (req : Request)
+    (respond : Response → IO ResponseReceived)
+    (h : (req.rawPathInfo == path) = false) :
+    healthCheck path app req respond = app req respond := by
+  simp [healthCheck, h]
+
 end Network.Wai.Middleware

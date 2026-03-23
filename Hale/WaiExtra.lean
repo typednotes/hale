@@ -28,6 +28,9 @@ import Hale.WaiExtra.Network.Wai.Middleware.RealIp
 import Hale.WaiExtra.Network.Wai.Middleware.Jsonp
 import Hale.WaiExtra.Network.Wai.Middleware.Approot
 import Hale.WaiExtra.Network.Wai.Middleware.RequestLogger
+import Hale.WaiExtra.Network.Wai.Middleware.Gzip
+import Hale.WaiExtra.Network.Wai.Middleware.RequestLogger.JSON
+import Hale.WaiExtra.Network.Wai.Middleware.RequestSizeLimit.Internal
 import Hale.WaiExtra.Network.Wai.Parse
 import Hale.WaiExtra.Network.Wai.Test
 import Hale.WaiExtra.Network.Wai.Test.Internal

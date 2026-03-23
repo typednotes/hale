@@ -152,6 +152,52 @@ def bodyIsEmpty : Response → Bool
   | .responseStream _ _ _     => false
   | .responseRaw _ _          => false
 
+-- Response accessor laws
+
+/-- Status accessor returns the status of a builder response. -/
+theorem status_responseBuilder (s : Status) (h : ResponseHeaders) (b : ByteArray) :
+    (Response.responseBuilder s h b).status = s := rfl
+
+/-- Status accessor returns the status of a file response. -/
+theorem status_responseFile (s : Status) (h : ResponseHeaders) (p : String) (fp : Option FilePart) :
+    (Response.responseFile s h p fp).status = s := rfl
+
+/-- Status accessor returns the status of a stream response. -/
+theorem status_responseStream (s : Status) (h : ResponseHeaders) (b : StreamingBody) :
+    (Response.responseStream s h b).status = s := rfl
+
+/-- Headers accessor returns the headers of a builder response. -/
+theorem headers_responseBuilder (s : Status) (h : ResponseHeaders) (b : ByteArray) :
+    (Response.responseBuilder s h b).headers = h := rfl
+
+/-- Headers accessor returns the headers of a file response. -/
+theorem headers_responseFile (s : Status) (h : ResponseHeaders) (p : String) (fp : Option FilePart) :
+    (Response.responseFile s h p fp).headers = h := rfl
+
+/-- `mapResponseHeaders id` is identity for builder responses. -/
+theorem mapResponseHeaders_id_responseBuilder (s : Status) (h : ResponseHeaders) (b : ByteArray) :
+    (Response.responseBuilder s h b).mapResponseHeaders id = .responseBuilder s h b := rfl
+
+/-- `mapResponseHeaders id` is identity for file responses. -/
+theorem mapResponseHeaders_id_responseFile (s : Status) (h : ResponseHeaders) (p : String) (fp : Option FilePart) :
+    (Response.responseFile s h p fp).mapResponseHeaders id = .responseFile s h p fp := rfl
+
+/-- `mapResponseHeaders id` is identity for stream responses. -/
+theorem mapResponseHeaders_id_responseStream (s : Status) (h : ResponseHeaders) (b : StreamingBody) :
+    (Response.responseStream s h b).mapResponseHeaders id = .responseStream s h b := rfl
+
+/-- `mapResponseStatus id` is identity for builder responses. -/
+theorem mapResponseStatus_id_responseBuilder (s : Status) (h : ResponseHeaders) (b : ByteArray) :
+    (Response.responseBuilder s h b).mapResponseStatus id = .responseBuilder s h b := rfl
+
+/-- `mapResponseStatus id` is identity for file responses. -/
+theorem mapResponseStatus_id_responseFile (s : Status) (h : ResponseHeaders) (p : String) (fp : Option FilePart) :
+    (Response.responseFile s h p fp).mapResponseStatus id = .responseFile s h p fp := rfl
+
+/-- `mapResponseStatus id` is identity for stream responses. -/
+theorem mapResponseStatus_id_responseStream (s : Status) (h : ResponseHeaders) (b : StreamingBody) :
+    (Response.responseStream s h b).mapResponseStatus id = .responseStream s h b := rfl
+
 end Response
 
 /-- A WAI application.

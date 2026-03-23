@@ -22,4 +22,11 @@ def forceSSL : Middleware :=
       let url := "https://" ++ host ++ req.rawPathInfo ++ req.rawQueryString
       respond (.responseBuilder status301 [(hLocation, url)] ByteArray.empty)
 
+/-- Secure requests pass through the forceSSL middleware unchanged.
+    $$\forall\, \text{req},\; \text{req.isSecure} = \text{true} \implies \text{forceSSL}(\text{app}, \text{req}) = \text{app}(\text{req})$$ -/
+theorem forceSSL_secure (app : Application) (req : Request) (respond : Response → IO ResponseReceived)
+    (h : req.isSecure = true) :
+    forceSSL app req respond = app req respond := by
+  simp [forceSSL, h]
+
 end Network.Wai.Middleware

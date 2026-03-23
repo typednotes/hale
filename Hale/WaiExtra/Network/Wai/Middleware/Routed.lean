@@ -23,4 +23,12 @@ def routed (predicate : Request → Bool) (middle : Middleware) : Middleware :=
 def routedPrefix (pathPrefix : String) (middle : Middleware) : Middleware :=
   routed (fun req => req.rawPathInfo.startsWith pathPrefix) middle
 
+/-- Routing with always-true predicate applies the middleware. -/
+theorem routed_true (middle : Middleware) :
+    routed (fun _ => true) middle = middle := rfl
+
+/-- Routing with always-false predicate is identity. -/
+theorem routed_false (middle : Middleware) :
+    routed (fun _ => false) middle = (id : Middleware) := rfl
+
 end Network.Wai.Middleware

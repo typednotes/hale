@@ -35,3 +35,8 @@ import Hale.AnsiTerminal
 import Hale.WaiHttp2Extra
 import Hale.TLS
 import Hale.WarpTLS
+import Hale.ResourceT
+import Hale.WebSockets
+import Hale.WaiWebSockets
+import Hale.WaiLogger
+import Hale.WaiAppStatic

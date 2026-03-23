@@ -166,4 +166,27 @@ def ifRequest (pred : Request → Bool) (middle : Middleware) : Middleware :=
     if pred req then middle app req respond
     else app req respond
 
+-- ================================================================
+-- Middleware algebraic properties
+-- ================================================================
+
+/-- Identity middleware is left identity for composition.
+    $$\text{id} \circ m = m$$ -/
+theorem idMiddleware_comp_left (m : Middleware) : composeMiddleware idMiddleware m = m := rfl
+
+/-- Identity middleware is right identity for composition.
+    $$m \circ \text{id} = m$$ -/
+theorem idMiddleware_comp_right (m : Middleware) : composeMiddleware m idMiddleware = m := rfl
+
+/-- `modifyRequest id` is the identity middleware. -/
+theorem modifyRequest_id : modifyRequest id = (idMiddleware : Middleware) := rfl
+
+/-- `modifyResponse id` is the identity middleware. -/
+theorem modifyResponse_id : modifyResponse id = (idMiddleware : Middleware) := rfl
+
+/-- `ifRequest (fun _ => false)` always passes through.
+    $$\text{ifRequest}(\bot, m) = \text{id}$$ -/
+theorem ifRequest_false (middle : Middleware) :
+    ifRequest (fun _ => false) middle = (idMiddleware : Middleware) := rfl
+
 end Network.Wai

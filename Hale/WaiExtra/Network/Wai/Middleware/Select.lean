@@ -16,4 +16,8 @@ def select (choose : Request → Option Middleware) : Middleware :=
     | some mid => mid app req respond
     | none => app req respond
 
+/-- Select with always-none is the identity middleware.
+    $$\text{select}(\lambda\, \_.\; \text{none}) = \text{id}$$ -/
+theorem select_none : select (fun _ => (none : Option Middleware)) = (id : Middleware) := rfl
+
 end Network.Wai.Middleware
