@@ -10,14 +10,16 @@
     runs `settingsBeforeMainLoop`, and enters the accept loop.
   - `acceptLoop` accepts connections and spawns green threads via `forkIO`
     for each (uses the thread pool, not dedicated OS threads).
-  - `runConnection` handles a single connection: parses the request,
-    invokes the application, and sends the response.
+  - `runConnection` handles a connection with keep-alive support: creates
+    a `RecvBuffer` once, then loops over requests until the client
+    signals `Connection: close` or the connection drops.
 
   ## Guarantees
 
   - Server socket is cleaned up via `try/finally`
   - Client sockets are closed after handling via `try/finally`
   - Exception in one connection does not crash the server
+  - Keep-alive follows HTTP/1.1 semantics (default keep-alive, close on request)
 -/
 
 import Hale.WAI
@@ -32,25 +34,57 @@ namespace Network.Wai.Handler.Warp
 
 open Network.Wai
 open Network.Socket
+open Network.HTTP.Types
 
-/-- Handle a single HTTP connection.
-    Parses the request, invokes the application, and sends the response.
-    The client socket is closed after handling.
+/-- Connection action after handling a request.
+    Encodes the HTTP/1.1 keep-alive state machine. -/
+inductive ConnAction where
+  | keepAlive  -- continue reading next request on this connection
+  | close      -- close the connection
+deriving BEq, Repr
+
+/-- Determine whether to keep the connection alive based on HTTP version
+    and the Connection header.
+    - HTTP/1.1: keep-alive by default, close if "Connection: close"
+    - HTTP/1.0: close by default, keep-alive if "Connection: keep-alive" -/
+def connAction (req : Network.Wai.Request) : ConnAction :=
+  let connHdr := req.requestHeaders.find? (fun (n, _) => n == hConnection)
+    |>.map (·.2.toLower)
+  if req.httpVersion == http11 then
+    if connHdr == some "close" then .close else .keepAlive
+  else
+    if connHdr == some "keep-alive" then .keepAlive else .close
+
+/-- Handle a single HTTP connection with keep-alive support.
+    Creates a RecvBuffer once, loops over requests until close.
     $$\text{runConnection} : \text{Socket} \to \text{SockAddr} \to \text{Settings} \to \text{Application} \to \text{IO}(\text{Unit})$$ -/
-def runConnection (clientSock : Socket) (remoteAddr : SockAddr)
+partial def runConnection (clientSock : Socket) (remoteAddr : SockAddr)
     (settings : Settings) (app : Application) : IO Unit := do
+  let buf ← FFI.recvBufCreate clientSock
   try
-    let reqOpt ← parseRequest clientSock remoteAddr
-    match reqOpt with
-    | none => pure ()  -- Malformed request or connection closed
-    | some req =>
-      let _received ← app req fun resp => do
-        sendResponse clientSock settings req resp
-      pure ()
+    let mut keepGoing := true
+    while keepGoing do
+      let reqOpt ← parseRequest buf remoteAddr
+      match reqOpt with
+      | none => keepGoing := false  -- Connection closed or malformed
+      | some req =>
+        let action := connAction req
+        let _received ← app req fun resp => do
+          -- Add Connection header to response when closing
+          let resp' := if action == .close then
+            resp.mapResponseHeaders ((hConnection, "close") :: ·)
+          else resp
+          sendResponse clientSock settings req resp'
+        -- Drain any unread body bytes before next request
+        if action == .keepAlive then
+          let mut bodyDone := false
+          while !bodyDone do
+            let chunk ← req.requestBody
+            if chunk.isEmpty then bodyDone := true
+        else
+          keepGoing := false
   catch e =>
-    -- Invoke the exception handler with the remote address
     settings.settingsOnException (some remoteAddr)
-    -- Log to stderr as a fallback
     IO.eprintln s!"Warp: connection error from {remoteAddr}: {e}"
   finally
     Network.Socket.close clientSock

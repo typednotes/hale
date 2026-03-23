@@ -136,6 +136,135 @@ static inline lean_obj_res mk_list_cons(lean_obj_arg head, lean_obj_arg tail) {
 }
 
 /* ────────────────────────────────────────────────────────────
+ * RecvBuffer: buffered reader for HTTP request parsing
+ *
+ * Reads socket data in 4KB chunks, scans for CRLF in C.
+ * Eliminates per-byte syscall overhead (the #1 perf bottleneck).
+ * Does NOT own the socket fd — Socket finalizer handles close.
+ * ──────────────────────────────────────────────────────────── */
+
+#define RECVBUF_SIZE 4096
+
+typedef struct {
+    int    fd;                  /* borrowed socket fd */
+    size_t pos;                 /* next byte to consume */
+    size_t len;                 /* bytes available in buf */
+    uint8_t buf[RECVBUF_SIZE]; /* read buffer */
+} hale_recvbuf_t;
+
+static lean_external_class *g_hale_recvbuf_class = NULL;
+
+static void hale_recvbuf_finalizer(void *ptr) {
+    free(ptr); /* free the struct, NOT the fd */
+}
+
+static void hale_ensure_recvbuf_class(void) {
+    if (g_hale_recvbuf_class) return;
+    g_hale_recvbuf_class = lean_register_external_class(
+        &hale_recvbuf_finalizer, &hale_noop_foreach);
+}
+
+static inline hale_recvbuf_t *get_recvbuf(b_lean_obj_arg obj) {
+    return (hale_recvbuf_t *)lean_get_external_data(obj);
+}
+
+/* Refill the buffer from the socket. Returns bytes read, 0 on EOF, -1 on error. */
+static ssize_t recvbuf_fill(hale_recvbuf_t *rb) {
+    /* Compact: move remaining bytes to front */
+    if (rb->pos > 0 && rb->len > rb->pos) {
+        size_t remaining = rb->len - rb->pos;
+        memmove(rb->buf, rb->buf + rb->pos, remaining);
+        rb->len = remaining;
+        rb->pos = 0;
+    } else if (rb->pos > 0) {
+        rb->pos = 0;
+        rb->len = 0;
+    }
+    size_t space = RECVBUF_SIZE - rb->len;
+    if (space == 0) return 0;
+    ssize_t n = recv(rb->fd, rb->buf + rb->len, space, 0);
+    if (n > 0) rb->len += (size_t)n;
+    return n;
+}
+
+/**
+ * Create a RecvBuffer for a socket.
+ */
+LEAN_EXPORT lean_obj_res hale_recvbuf_create(b_lean_obj_arg sock) {
+    hale_ensure_recvbuf_class();
+    hale_recvbuf_t *rb = (hale_recvbuf_t *)calloc(1, sizeof(hale_recvbuf_t));
+    if (!rb) return mk_io_error("recvbuf_create: out of memory");
+    rb->fd = get_socket_fd(sock);
+    return lean_io_result_mk_ok(
+        lean_alloc_external(g_hale_recvbuf_class, rb));
+}
+
+/**
+ * Read a CRLF-terminated line. Returns the line without CRLF.
+ * Returns empty string on EOF. Scan+refill loop runs entirely in C.
+ */
+LEAN_EXPORT lean_obj_res hale_recvbuf_readline(b_lean_obj_arg buf) {
+    hale_recvbuf_t *rb = get_recvbuf(buf);
+    uint8_t line[8192];
+    size_t line_len = 0;
+
+    for (;;) {
+        while (rb->pos < rb->len) {
+            uint8_t c = rb->buf[rb->pos++];
+            if (line_len > 0 && line[line_len - 1] == '\r' && c == '\n') {
+                lean_object *s = lean_mk_string_from_bytes(
+                    (const char *)line, line_len - 1);
+                return lean_io_result_mk_ok(s);
+            }
+            if (line_len < sizeof(line) - 1) {
+                line[line_len++] = c;
+            } else {
+                return mk_io_error("recvbuf_readline: line too long (>8KB)");
+            }
+        }
+        ssize_t n = recvbuf_fill(rb);
+        if (n < 0) return mk_io_errno_error();
+        if (n == 0) {
+            if (line_len == 0)
+                return lean_io_result_mk_ok(lean_mk_string(""));
+            lean_object *s = lean_mk_string_from_bytes(
+                (const char *)line, line_len);
+            return lean_io_result_mk_ok(s);
+        }
+    }
+}
+
+/**
+ * Read exactly n bytes from the buffer. For request bodies.
+ */
+LEAN_EXPORT lean_obj_res hale_recvbuf_readn(b_lean_obj_arg buf, size_t n) {
+    hale_recvbuf_t *rb = get_recvbuf(buf);
+    lean_object *arr = lean_alloc_sarray(1, n, n);
+    uint8_t *dst = lean_sarray_cptr(arr);
+    size_t total = 0;
+
+    while (total < n) {
+        size_t avail = rb->len - rb->pos;
+        if (avail > 0) {
+            size_t to_copy = avail < (n - total) ? avail : (n - total);
+            memcpy(dst + total, rb->buf + rb->pos, to_copy);
+            rb->pos += to_copy;
+            total += to_copy;
+        }
+        if (total >= n) break;
+        ssize_t nr = recvbuf_fill(rb);
+        if (nr < 0) { lean_dec(arr); return mk_io_errno_error(); }
+        if (nr == 0) {
+            lean_object *trimmed = lean_alloc_sarray(1, total, total);
+            memcpy(lean_sarray_cptr(trimmed), dst, total);
+            lean_dec(arr);
+            return lean_io_result_mk_ok(trimmed);
+        }
+    }
+    return lean_io_result_mk_ok(arr);
+}
+
+/* ────────────────────────────────────────────────────────────
  * Address family encoding: Family -> UInt8
  *   0 = AF_INET, 1 = AF_INET6, 2 = AF_UNIX
  * ──────────────────────────────────────────────────────────── */

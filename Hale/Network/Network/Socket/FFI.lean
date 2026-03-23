@@ -24,6 +24,33 @@ namespace Network.Socket.FFI
 
 open Network.Socket
 
+-- ── RecvBuffer: buffered reader for HTTP request parsing ──
+-- Reads socket data in 4KB chunks, scans for CRLF entirely in C.
+-- The RecvBuffer borrows the socket fd — the Socket must outlive it.
+
+/-- Opaque buffered reader handle. -/
+opaque RecvBufferHandle : NonemptyType
+/-- A buffered reader over a socket. Reads in 4KB chunks, scans for CRLF in C.
+    **Invariant (axiom-dependent):** the Socket must outlive the RecvBuffer. -/
+def RecvBuffer : Type := RecvBufferHandle.type
+instance : Nonempty RecvBuffer := RecvBufferHandle.property
+
+/-- Create a buffered reader for a socket.
+    $$\text{recvBufCreate} : \text{Socket} \to \text{IO}(\text{RecvBuffer})$$ -/
+@[extern "hale_recvbuf_create"]
+opaque recvBufCreate (sock : @& Socket) : IO RecvBuffer
+
+/-- Read a CRLF-terminated line. Returns the line without the CRLF.
+    Returns empty string on EOF. The scan loop runs entirely in C.
+    $$\text{recvBufReadLine} : \text{RecvBuffer} \to \text{IO}(\text{String})$$ -/
+@[extern "hale_recvbuf_readline"]
+opaque recvBufReadLine (buf : @& RecvBuffer) : IO String
+
+/-- Read exactly n bytes. For reading request bodies with known Content-Length.
+    $$\text{recvBufReadN} : \text{RecvBuffer} \to \text{USize} \to \text{IO}(\text{ByteArray})$$ -/
+@[extern "hale_recvbuf_readn"]
+opaque recvBufReadN (buf : @& RecvBuffer) (n : USize) : IO ByteArray
+
 -- ── Socket creation and management ──
 -- Note: External classes for Socket and EventLoop are lazily initialized
 -- in the C FFI (hale_ensure_classes_initialized) on first use.
