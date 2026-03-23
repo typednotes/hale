@@ -32,3 +32,8 @@ lean_lib Tests where
 
 lean_exe «hale-tests» where
   root := `Tests.Main
+
+-- Examples (run with: lake exe <name>)
+
+lean_exe «echo-server» where
+  root := `Examples.Echo

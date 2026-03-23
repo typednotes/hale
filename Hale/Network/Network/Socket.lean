@@ -69,8 +69,9 @@ def withSocket (fam : Family) (typ : SocketType) (f : Socket → IO α) : IO α 
     $$\text{accept} : \text{Socket} \to \text{IO}(\text{Socket} \times \text{SockAddr})$$ -/
 def accept (s : Socket) : IO (Socket × SockAddr) := do
   let clientSock ← socketAccept s
-  let (host, port) ← FFI.getPeerName clientSock
-  pure (clientSock, ⟨host, port.toNat.toUInt16⟩)
+  let host ← FFI.getPeerNameHost clientSock
+  let port ← FFI.getPeerNamePort clientSock
+  pure (clientSock, ⟨host, port⟩)
 
 /-- Connect to a remote address.
     $$\text{connect} : \text{Socket} \to \text{SockAddr} \to \text{IO}(\text{Unit})$$ -/
@@ -133,14 +134,16 @@ def accept (s : Socket) : IO (Socket × SockAddr) := do
 /-- Get the remote peer's address.
     $$\text{getPeerName} : \text{Socket} \to \text{IO}(\text{SockAddr})$$ -/
 def getPeerName (s : Socket) : IO SockAddr := do
-  let (host, port) ← FFI.getPeerName s
-  pure ⟨host, port.toNat.toUInt16⟩
+  let host ← FFI.getPeerNameHost s
+  let port ← FFI.getPeerNamePort s
+  pure ⟨host, port⟩
 
 /-- Get the socket's locally-bound address.
     $$\text{getSockName} : \text{Socket} \to \text{IO}(\text{SockAddr})$$ -/
 def getSockName (s : Socket) : IO SockAddr := do
-  let (host, port) ← FFI.getSockName s
-  pure ⟨host, port.toNat.toUInt16⟩
+  let host ← FFI.getSockNameHost s
+  let port ← FFI.getSockNamePort s
+  pure ⟨host, port⟩
 
 -- ══════════════════════════════════════════════════════════════
 -- DNS resolution

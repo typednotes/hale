@@ -14,15 +14,10 @@ open Network.Socket
 
 /-- Send all bytes from a ByteArray on the socket.
     Loops until all data is sent or the connection closes.
+    Implemented in C FFI for reliability.
     $$\text{sendAll} : \text{Socket} \to \text{ByteArray} \to \text{IO}(\text{Unit})$$ -/
-def sendAll (s : Socket) (data : ByteArray) : IO Unit := do
-  let mut sent := 0
-  while sent < data.size do
-    let slice := data.extract sent data.size
-    let n ← Network.Socket.send s slice
-    if n == 0 then
-      throw (IO.userError "connection closed")
-    sent := sent + n
+@[inline] def sendAll (s : Socket) (data : ByteArray) : IO Unit :=
+  FFI.socketSendAll s data
 
 /-- Receive up to `maxlen` bytes as a ByteArray.
     $$\text{recv} : \text{Socket} \to \mathbb{N} \to \text{IO}(\text{ByteArray})$$ -/

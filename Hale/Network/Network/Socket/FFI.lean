@@ -71,6 +71,12 @@ opaque socketSend (sock : @& Socket) (data : @& ByteArray) : IO USize
 @[extern "hale_socket_recv"]
 opaque socketRecv (sock : @& Socket) (maxlen : USize) : IO ByteArray
 
+/-- Send all data, looping until complete. Implemented in C to avoid
+    Lean compiler issues with Prod containing scalar loop state.
+    $$\text{socketSendAll} : \text{Socket} \to \text{ByteArray} \to \text{IO}(\text{Unit})$$ -/
+@[extern "hale_socket_sendall"]
+opaque socketSendAll (sock : @& Socket) (data : @& ByteArray) : IO Unit
+
 -- ── UDP: sendto / recvfrom ──
 
 /-- Send data to a specific address (UDP).
@@ -126,15 +132,25 @@ opaque setSendBuf (sock : @& Socket) (size : USize) : IO Unit
 @[extern "hale_socket_shutdown"]
 opaque socketShutdown (sock : @& Socket) (how : UInt8) : IO Unit
 
-/-- Get peer address. Returns `(host, port)`.
-    $$\text{getPeerName} : \text{Socket} \to \text{IO}(\text{String} \times \text{USize})$$ -/
-@[extern "hale_socket_getpeername"]
-opaque getPeerName (sock : @& Socket) : IO (String × USize)
+/-- Get peer address host string.
+    $$\text{getPeerNameHost} : \text{Socket} \to \text{IO}(\text{String})$$ -/
+@[extern "hale_socket_getpeername_host"]
+opaque getPeerNameHost (sock : @& Socket) : IO String
 
-/-- Get local address. Returns `(host, port)`.
-    $$\text{getSockName} : \text{Socket} \to \text{IO}(\text{String} \times \text{USize})$$ -/
-@[extern "hale_socket_getsockname"]
-opaque getSockName (sock : @& Socket) : IO (String × USize)
+/-- Get peer address port.
+    $$\text{getPeerNamePort} : \text{Socket} \to \text{IO}(\text{UInt16})$$ -/
+@[extern "hale_socket_getpeername_port"]
+opaque getPeerNamePort (sock : @& Socket) : IO UInt16
+
+/-- Get local address host string.
+    $$\text{getSockNameHost} : \text{Socket} \to \text{IO}(\text{String})$$ -/
+@[extern "hale_socket_getsockname_host"]
+opaque getSockNameHost (sock : @& Socket) : IO String
+
+/-- Get local address port.
+    $$\text{getSockNamePort} : \text{Socket} \to \text{IO}(\text{UInt16})$$ -/
+@[extern "hale_socket_getsockname_port"]
+opaque getSockNamePort (sock : @& Socket) : IO UInt16
 
 -- ── DNS resolution ──
 

@@ -108,6 +108,10 @@ static inline lean_obj_res mk_io_errno_error(void) {
 
 /* ────────────────────────────────────────────────────────────
  * Helper: make a Lean pair (Prod)
+ *
+ * The Lean compiler boxes USize/UInt values via lean_box()
+ * when they appear in polymorphic positions (e.g. Prod fields).
+ * All fields are passed as boxed lean_obj_arg values.
  *   Lean encodes (a, b) as ctor(0, 2, 0) with fields [a, b]
  * ──────────────────────────────────────────────────────────── */
 static inline lean_obj_res mk_pair(lean_obj_arg fst, lean_obj_arg snd) {
@@ -167,32 +171,27 @@ static int socktype_to_st(uint8_t st) {
 }
 
 /* ────────────────────────────────────────────────────────────
- * Helper: format a sockaddr into (host_string, port)
- * Returns a Lean pair (String x USize)
+ * Helper: extract host string and port from a sockaddr
+ * Fills `ip` buffer and sets `*out_port`.
  * ──────────────────────────────────────────────────────────── */
-static lean_obj_res sockaddr_to_lean_pair(struct sockaddr_storage *addr, socklen_t addrlen) {
-    char ip[INET6_ADDRSTRLEN + 1];
-    uint16_t port = 0;
+static void sockaddr_to_strings(struct sockaddr_storage *addr, char *ip, size_t ip_len, uint16_t *out_port) {
+    *out_port = 0;
 
     if (addr->ss_family == AF_INET) {
         struct sockaddr_in *sin = (struct sockaddr_in *)addr;
-        inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
-        port = ntohs(sin->sin_port);
+        inet_ntop(AF_INET, &sin->sin_addr, ip, (socklen_t)ip_len);
+        *out_port = ntohs(sin->sin_port);
     } else if (addr->ss_family == AF_INET6) {
         struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)addr;
-        inet_ntop(AF_INET6, &sin6->sin6_addr, ip, sizeof(ip));
-        port = ntohs(sin6->sin6_port);
+        inet_ntop(AF_INET6, &sin6->sin6_addr, ip, (socklen_t)ip_len);
+        *out_port = ntohs(sin6->sin6_port);
     } else if (addr->ss_family == AF_UNIX) {
         struct sockaddr_un *sun = (struct sockaddr_un *)addr;
-        strncpy(ip, sun->sun_path, sizeof(ip) - 1);
-        ip[sizeof(ip) - 1] = '\0';
-        port = 0;
+        strncpy(ip, sun->sun_path, ip_len - 1);
+        ip[ip_len - 1] = '\0';
     } else {
         strcpy(ip, "unknown");
-        port = 0;
     }
-
-    return mk_pair(lean_mk_string(ip), lean_box((size_t)port));
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -252,7 +251,7 @@ static int resolve_addr(const char *host, uint16_t port, int family_hint,
  * domain: 0=AF_INET, 1=AF_INET6, 2=AF_UNIX
  * type:   0=SOCK_STREAM, 1=SOCK_DGRAM, 2=SOCK_RAW
  */
-LEAN_EXPORT lean_obj_res hale_socket_create(uint8_t domain, uint8_t socktype, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_create(uint8_t domain, uint8_t socktype) {
     int af = family_to_af(domain);
     int st = socktype_to_st(socktype);
     int fd = socket(af, st, 0);
@@ -266,7 +265,7 @@ LEAN_EXPORT lean_obj_res hale_socket_create(uint8_t domain, uint8_t socktype, le
  * close(sock) — the finalizer also closes, but explicit close is preferred.
  * We set the fd to -1 after closing to avoid double-close by the finalizer.
  */
-LEAN_EXPORT lean_obj_res hale_socket_close(b_lean_obj_arg sock, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_close(b_lean_obj_arg sock) {
     int fd = get_socket_fd(sock);
     if (fd >= 0) {
         if (close(fd) < 0) {
@@ -284,7 +283,7 @@ LEAN_EXPORT lean_obj_res hale_socket_close(b_lean_obj_arg sock, lean_obj_arg wor
 /**
  * bind(sock, host, port) -- supports IPv4, IPv6, and numeric addresses
  */
-LEAN_EXPORT lean_obj_res hale_socket_bind(b_lean_obj_arg sock, lean_obj_arg host, uint16_t port, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_bind(b_lean_obj_arg sock, lean_obj_arg host, uint16_t port) {
     int fd = get_socket_fd(sock);
     const char *h = lean_string_cstr(host);
 
@@ -313,7 +312,7 @@ LEAN_EXPORT lean_obj_res hale_socket_bind(b_lean_obj_arg sock, lean_obj_arg host
 /**
  * listen(sock, backlog)
  */
-LEAN_EXPORT lean_obj_res hale_socket_listen(b_lean_obj_arg sock, size_t backlog, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_listen(b_lean_obj_arg sock, size_t backlog) {
     int fd = get_socket_fd(sock);
     if (listen(fd, (int)backlog) < 0) {
         return mk_io_errno_error();
@@ -329,7 +328,7 @@ LEAN_EXPORT lean_obj_res hale_socket_listen(b_lean_obj_arg sock, size_t backlog,
  *
  * Supports both IPv4 and IPv6 peers.
  */
-LEAN_EXPORT lean_obj_res hale_socket_accept(b_lean_obj_arg sock, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_accept(b_lean_obj_arg sock) {
     int fd = get_socket_fd(sock);
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
@@ -344,7 +343,7 @@ LEAN_EXPORT lean_obj_res hale_socket_accept(b_lean_obj_arg sock, lean_obj_arg wo
 /**
  * connect(sock, host, port) -- supports IPv4 and IPv6
  */
-LEAN_EXPORT lean_obj_res hale_socket_connect(b_lean_obj_arg sock, lean_obj_arg host, uint16_t port, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_connect(b_lean_obj_arg sock, lean_obj_arg host, uint16_t port) {
     int fd = get_socket_fd(sock);
     const char *h = lean_string_cstr(host);
 
@@ -376,7 +375,7 @@ LEAN_EXPORT lean_obj_res hale_socket_connect(b_lean_obj_arg sock, lean_obj_arg h
 /**
  * send(sock, data) -> bytes_sent
  */
-LEAN_EXPORT lean_obj_res hale_socket_send(b_lean_obj_arg sock, b_lean_obj_arg data, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_send(b_lean_obj_arg sock, b_lean_obj_arg data) {
     int fd = get_socket_fd(sock);
     size_t len = lean_sarray_size(data);
     const uint8_t *buf = lean_sarray_cptr(data);
@@ -390,7 +389,7 @@ LEAN_EXPORT lean_obj_res hale_socket_send(b_lean_obj_arg sock, b_lean_obj_arg da
 /**
  * recv(sock, maxlen) -> ByteArray
  */
-LEAN_EXPORT lean_obj_res hale_socket_recv(b_lean_obj_arg sock, size_t maxlen, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_recv(b_lean_obj_arg sock, size_t maxlen) {
     int fd = get_socket_fd(sock);
     uint8_t *buf = malloc(maxlen);
     if (!buf) {
@@ -407,6 +406,28 @@ LEAN_EXPORT lean_obj_res hale_socket_recv(b_lean_obj_arg sock, size_t maxlen, le
     return lean_io_result_mk_ok(arr);
 }
 
+/**
+ * sendall(sock, data) — loop until all bytes are sent.
+ * Returns Unit on success, IO error on failure.
+ */
+LEAN_EXPORT lean_obj_res hale_socket_sendall(b_lean_obj_arg sock, b_lean_obj_arg data) {
+    int fd = get_socket_fd(sock);
+    size_t len = lean_sarray_size(data);
+    const uint8_t *buf = lean_sarray_cptr(data);
+    size_t total_sent = 0;
+    while (total_sent < len) {
+        ssize_t n = send(fd, buf + total_sent, len - total_sent, 0);
+        if (n < 0) {
+            return mk_io_errno_error();
+        }
+        if (n == 0) {
+            return mk_io_error("sendall: connection closed");
+        }
+        total_sent += (size_t)n;
+    }
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 /* ================================================================
  * UDP: sendto / recvfrom
  * ================================================================ */
@@ -415,8 +436,7 @@ LEAN_EXPORT lean_obj_res hale_socket_recv(b_lean_obj_arg sock, size_t maxlen, le
  * sendto(sock, data, host, port) -> bytes_sent
  */
 LEAN_EXPORT lean_obj_res hale_socket_sendto(b_lean_obj_arg sock, b_lean_obj_arg data,
-                                             lean_obj_arg host, uint16_t port,
-                                             lean_obj_arg world) {
+                                             lean_obj_arg host, uint16_t port) {
     int fd = get_socket_fd(sock);
     size_t len = lean_sarray_size(data);
     const uint8_t *buf = lean_sarray_cptr(data);
@@ -439,7 +459,7 @@ LEAN_EXPORT lean_obj_res hale_socket_sendto(b_lean_obj_arg sock, b_lean_obj_arg 
  * recvfrom(sock, maxlen) -> (ByteArray, (host_string, port))
  * Returns nested pair: (ByteArray x (String x USize))
  */
-LEAN_EXPORT lean_obj_res hale_socket_recvfrom(b_lean_obj_arg sock, size_t maxlen, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_recvfrom(b_lean_obj_arg sock, size_t maxlen) {
     int fd = get_socket_fd(sock);
     uint8_t *buf = malloc(maxlen);
     if (!buf) {
@@ -457,7 +477,10 @@ LEAN_EXPORT lean_obj_res hale_socket_recvfrom(b_lean_obj_arg sock, size_t maxlen
     memcpy(lean_sarray_cptr(arr), buf, (size_t)n);
     free(buf);
 
-    lean_obj_res addr_pair = sockaddr_to_lean_pair(&addr, addrlen);
+    char ip[INET6_ADDRSTRLEN + 1];
+    uint16_t rport = 0;
+    sockaddr_to_strings(&addr, ip, sizeof(ip), &rport);
+    lean_obj_res addr_pair = mk_pair(lean_mk_string(ip), lean_box((size_t)rport));
     lean_obj_res result = mk_pair(arr, addr_pair);
     return lean_io_result_mk_ok(result);
 }
@@ -469,7 +492,7 @@ LEAN_EXPORT lean_obj_res hale_socket_recvfrom(b_lean_obj_arg sock, size_t maxlen
 /**
  * setsockopt SO_REUSEADDR
  */
-LEAN_EXPORT lean_obj_res hale_socket_set_reuseaddr(b_lean_obj_arg sock, uint8_t enable, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_set_reuseaddr(b_lean_obj_arg sock, uint8_t enable) {
     int fd = get_socket_fd(sock);
     int val = enable ? 1 : 0;
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val)) < 0) {
@@ -481,7 +504,7 @@ LEAN_EXPORT lean_obj_res hale_socket_set_reuseaddr(b_lean_obj_arg sock, uint8_t 
 /**
  * setsockopt TCP_NODELAY
  */
-LEAN_EXPORT lean_obj_res hale_socket_set_nodelay(b_lean_obj_arg sock, uint8_t enable, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_set_nodelay(b_lean_obj_arg sock, uint8_t enable) {
     int fd = get_socket_fd(sock);
     int val = enable ? 1 : 0;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &val, sizeof(val)) < 0) {
@@ -493,7 +516,7 @@ LEAN_EXPORT lean_obj_res hale_socket_set_nodelay(b_lean_obj_arg sock, uint8_t en
 /**
  * Set non-blocking mode
  */
-LEAN_EXPORT lean_obj_res hale_socket_set_nonblocking(b_lean_obj_arg sock, uint8_t enable, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_set_nonblocking(b_lean_obj_arg sock, uint8_t enable) {
     int fd = get_socket_fd(sock);
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) {
@@ -513,7 +536,7 @@ LEAN_EXPORT lean_obj_res hale_socket_set_nonblocking(b_lean_obj_arg sock, uint8_
 /**
  * setsockopt SO_KEEPALIVE
  */
-LEAN_EXPORT lean_obj_res hale_socket_set_keepalive(b_lean_obj_arg sock, uint8_t enable, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_set_keepalive(b_lean_obj_arg sock, uint8_t enable) {
     int fd = get_socket_fd(sock);
     int val = enable ? 1 : 0;
     if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) < 0) {
@@ -525,7 +548,7 @@ LEAN_EXPORT lean_obj_res hale_socket_set_keepalive(b_lean_obj_arg sock, uint8_t 
 /**
  * setsockopt SO_LINGER
  */
-LEAN_EXPORT lean_obj_res hale_socket_set_linger(b_lean_obj_arg sock, uint8_t enable, size_t seconds, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_set_linger(b_lean_obj_arg sock, uint8_t enable, size_t seconds) {
     int fd = get_socket_fd(sock);
     struct linger lg;
     lg.l_onoff = enable ? 1 : 0;
@@ -539,7 +562,7 @@ LEAN_EXPORT lean_obj_res hale_socket_set_linger(b_lean_obj_arg sock, uint8_t ena
 /**
  * setsockopt SO_RCVBUF
  */
-LEAN_EXPORT lean_obj_res hale_socket_set_recvbuf(b_lean_obj_arg sock, size_t sz, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_set_recvbuf(b_lean_obj_arg sock, size_t sz) {
     int fd = get_socket_fd(sock);
     int val = (int)sz;
     if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &val, sizeof(val)) < 0) {
@@ -551,7 +574,7 @@ LEAN_EXPORT lean_obj_res hale_socket_set_recvbuf(b_lean_obj_arg sock, size_t sz,
 /**
  * setsockopt SO_SNDBUF
  */
-LEAN_EXPORT lean_obj_res hale_socket_set_sendbuf(b_lean_obj_arg sock, size_t sz, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_set_sendbuf(b_lean_obj_arg sock, size_t sz) {
     int fd = get_socket_fd(sock);
     int val = (int)sz;
     if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &val, sizeof(val)) < 0) {
@@ -564,7 +587,7 @@ LEAN_EXPORT lean_obj_res hale_socket_set_sendbuf(b_lean_obj_arg sock, size_t sz,
  * shutdown(sock, how)
  * how: 0=SHUT_RD, 1=SHUT_WR, 2=SHUT_RDWR
  */
-LEAN_EXPORT lean_obj_res hale_socket_shutdown(b_lean_obj_arg sock, uint8_t how, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_shutdown(b_lean_obj_arg sock, uint8_t how) {
     int fd = get_socket_fd(sock);
     int shuthow;
     switch (how) {
@@ -580,31 +603,67 @@ LEAN_EXPORT lean_obj_res hale_socket_shutdown(b_lean_obj_arg sock, uint8_t how, 
 }
 
 /**
- * getpeername(sock) -> (host_string, port)
+ * getpeername_host(sock) -> String
  */
-LEAN_EXPORT lean_obj_res hale_socket_getpeername(b_lean_obj_arg sock, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_getpeername_host(b_lean_obj_arg sock) {
     int fd = get_socket_fd(sock);
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
     if (getpeername(fd, (struct sockaddr *)&addr, &addrlen) < 0) {
         return mk_io_errno_error();
     }
-    lean_obj_res pair = sockaddr_to_lean_pair(&addr, addrlen);
-    return lean_io_result_mk_ok(pair);
+    char ip[INET6_ADDRSTRLEN + 1];
+    uint16_t port = 0;
+    sockaddr_to_strings(&addr, ip, sizeof(ip), &port);
+    return lean_io_result_mk_ok(lean_mk_string(ip));
 }
 
 /**
- * getsockname(sock) -> (host_string, port)
+ * getpeername_port(sock) -> UInt16
  */
-LEAN_EXPORT lean_obj_res hale_socket_getsockname(b_lean_obj_arg sock, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_socket_getpeername_port(b_lean_obj_arg sock) {
+    int fd = get_socket_fd(sock);
+    struct sockaddr_storage addr;
+    socklen_t addrlen = sizeof(addr);
+    if (getpeername(fd, (struct sockaddr *)&addr, &addrlen) < 0) {
+        return mk_io_errno_error();
+    }
+    char ip[INET6_ADDRSTRLEN + 1];
+    uint16_t port = 0;
+    sockaddr_to_strings(&addr, ip, sizeof(ip), &port);
+    return lean_io_result_mk_ok(lean_box((uint32_t)port));
+}
+
+/**
+ * getsockname_host(sock) -> String
+ */
+LEAN_EXPORT lean_obj_res hale_socket_getsockname_host(b_lean_obj_arg sock) {
     int fd = get_socket_fd(sock);
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
     if (getsockname(fd, (struct sockaddr *)&addr, &addrlen) < 0) {
         return mk_io_errno_error();
     }
-    lean_obj_res pair = sockaddr_to_lean_pair(&addr, addrlen);
-    return lean_io_result_mk_ok(pair);
+    char ip[INET6_ADDRSTRLEN + 1];
+    uint16_t port = 0;
+    sockaddr_to_strings(&addr, ip, sizeof(ip), &port);
+    return lean_io_result_mk_ok(lean_mk_string(ip));
+}
+
+/**
+ * getsockname_port(sock) -> UInt16
+ */
+LEAN_EXPORT lean_obj_res hale_socket_getsockname_port(b_lean_obj_arg sock) {
+    int fd = get_socket_fd(sock);
+    struct sockaddr_storage addr;
+    socklen_t addrlen = sizeof(addr);
+    if (getsockname(fd, (struct sockaddr *)&addr, &addrlen) < 0) {
+        return mk_io_errno_error();
+    }
+    char ip[INET6_ADDRSTRLEN + 1];
+    uint16_t port = 0;
+    sockaddr_to_strings(&addr, ip, sizeof(ip), &port);
+    return lean_io_result_mk_ok(lean_box((uint32_t)port));
 }
 
 /* ================================================================
@@ -617,7 +676,7 @@ LEAN_EXPORT lean_obj_res hale_socket_getsockname(b_lean_obj_arg sock, lean_obj_a
  * Returns nested pairs, not flat 3-tuples.
  * Supports both IPv4 and IPv6 results.
  */
-LEAN_EXPORT lean_obj_res hale_getaddrinfo(lean_obj_arg node, lean_obj_arg service, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_getaddrinfo(lean_obj_arg node, lean_obj_arg service) {
     struct addrinfo hints, *res, *p;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
@@ -679,7 +738,7 @@ LEAN_EXPORT lean_obj_res hale_getaddrinfo(lean_obj_arg node, lean_obj_arg servic
 /**
  * Create an event loop fd (kqueue on macOS, epoll on Linux)
  */
-LEAN_EXPORT lean_obj_res hale_event_loop_create(lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_event_loop_create(void) {
 #ifdef __APPLE__
     int fd = kqueue();
     if (fd < 0) {
@@ -701,7 +760,7 @@ LEAN_EXPORT lean_obj_res hale_event_loop_create(lean_obj_arg world) {
  * Register interest in events for a socket
  * events: bitmask of HALE_EV_READABLE | HALE_EV_WRITABLE
  */
-LEAN_EXPORT lean_obj_res hale_event_loop_add(b_lean_obj_arg loop, b_lean_obj_arg sock, size_t events, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_event_loop_add(b_lean_obj_arg loop, b_lean_obj_arg sock, size_t events) {
     int loop_fd = get_event_loop_fd(loop);
     int socket_fd = get_socket_fd(sock);
 #ifdef __APPLE__
@@ -747,7 +806,7 @@ LEAN_EXPORT lean_obj_res hale_event_loop_add(b_lean_obj_arg loop, b_lean_obj_arg
 /**
  * Unregister a socket from the event loop
  */
-LEAN_EXPORT lean_obj_res hale_event_loop_del(b_lean_obj_arg loop, b_lean_obj_arg sock, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_event_loop_del(b_lean_obj_arg loop, b_lean_obj_arg sock) {
     int loop_fd = get_event_loop_fd(loop);
     int socket_fd = get_socket_fd(sock);
 #ifdef __APPLE__
@@ -775,7 +834,7 @@ LEAN_EXPORT lean_obj_res hale_event_loop_del(b_lean_obj_arg loop, b_lean_obj_arg
  * Wait for events. Returns List (fd x events) where events is a bitmask.
  * timeout_ms: timeout in milliseconds (-1 = block indefinitely)
  */
-LEAN_EXPORT lean_obj_res hale_event_loop_wait(b_lean_obj_arg loop, size_t timeout_ms, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_event_loop_wait(b_lean_obj_arg loop, size_t timeout_ms) {
     int loop_fd = get_event_loop_fd(loop);
 #ifdef __APPLE__
     #define MAX_EVENTS 64
@@ -846,7 +905,7 @@ LEAN_EXPORT lean_obj_res hale_event_loop_wait(b_lean_obj_arg loop, size_t timeou
 /**
  * Close the event loop — the finalizer also closes, but explicit close is preferred.
  */
-LEAN_EXPORT lean_obj_res hale_event_loop_close(b_lean_obj_arg loop, lean_obj_arg world) {
+LEAN_EXPORT lean_obj_res hale_event_loop_close(b_lean_obj_arg loop) {
     int fd = get_event_loop_fd(loop);
     if (fd >= 0) {
         if (close(fd) < 0) {
