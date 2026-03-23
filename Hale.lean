@@ -25,3 +25,13 @@ import Hale.Warp
 import Hale.QUIC
 import Hale.Http3
 import Hale.WarpQUIC
+import Hale.MimeTypes
+import Hale.DataDefault
+import Hale.Base64
+import Hale.Cookie
+import Hale.WaiExtra
+import Hale.FastLogger
+import Hale.AnsiTerminal
+import Hale.WaiHttp2Extra
+import Hale.TLS
+import Hale.WarpTLS

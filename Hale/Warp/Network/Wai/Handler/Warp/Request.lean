@@ -144,10 +144,14 @@ def parseRequest (buf : FFI.RecvBuffer) (remoteAddr : SockAddr) : IO (Option Req
     let rangeHeader := findHeader hRange headers
     let refererHeader := findHeader hReferer headers
     let uaHeader := findHeader hUserAgent headers
-    -- Parse content length
-    let contentLength := do
+    -- Parse content length → RequestBodyLength
+    let contentLengthOpt : Option Nat := do
       let clStr ← findHeader hContentLength headers
       clStr.toNat?
+    let bodyLength : Network.Wai.RequestBodyLength :=
+      match contentLengthOpt with
+      | some n => .knownLength n
+      | none   => .chunkedBody
     -- Parse path segments
     let pathSegments :=
       let segs := rawPath.splitOn "/"
@@ -156,11 +160,11 @@ def parseRequest (buf : FFI.RecvBuffer) (remoteAddr : SockAddr) : IO (Option Req
     let query := parseQuery rawQuery
     -- Body reader using the RecvBuffer for buffered reads.
     -- Axiom-dependent invariant: total bytes returned ≤ contentLength.
-    let bodyRef ← IO.mkRef contentLength
+    let bodyRef ← IO.mkRef contentLengthOpt
     let bodyReader : IO ByteArray := do
       let remaining ← bodyRef.get
       match remaining with
-      | none => pure ByteArray.empty
+      | none => pure ByteArray.empty   -- chunked: TODO proper chunked decoding
       | some 0 => pure ByteArray.empty
       | some n =>
         let toRead := min n 4096
@@ -180,7 +184,7 @@ def parseRequest (buf : FFI.RecvBuffer) (remoteAddr : SockAddr) : IO (Option Req
       queryString := query
       requestBody := bodyReader
       vault := Data.Vault.empty
-      requestBodyLength := contentLength
+      requestBodyLength := bodyLength
       requestHeaderHost := hostHeader
       requestHeaderRange := rangeHeader
       requestHeaderReferer := refererHeader

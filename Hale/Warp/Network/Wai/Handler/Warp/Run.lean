@@ -100,9 +100,9 @@ partial def runConnection (clientSock : Socket .connected) (remoteAddr : SockAdd
         if action == .keepAlive then
           -- Only drain body if there are unread bytes
           match req.requestBodyLength with
-          | none => pure ()      -- No Content-Length → no body to drain
-          | some 0 => pure ()    -- Empty body
-          | some _ =>
+          | .chunkedBody => pure ()      -- Chunked → no known size to drain
+          | .knownLength 0 => pure ()    -- Empty body
+          | .knownLength _ =>
             let mut bodyDone := false
             while !bodyDone do
               let chunk ← req.requestBody

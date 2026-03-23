@@ -4,6 +4,8 @@ This library provides functionalities heavily inspired by haskell popular librar
 
 ## Typing approach
 
+**Mantra: Extensive typing/proving with no compromise on performance.**
+
 We'd like our implementations to explicitly state and prove the guarantees they provide.
 
 Ideally the types give information about
@@ -253,6 +255,116 @@ Reference: https://hackage.haskell.org/package/warp-quic
 | Lean Module | Haskell Module |
 |---|---|
 | `Hale.WarpQUIC.Network.Wai.Handler.WarpQUIC` | `Network.Wai.Handler.WarpQUIC` |
+
+Reference: https://hackage.haskell.org/package/warp (internal modules)
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.Warp.Network.Wai.Handler.Warp.Types` | `Network.Wai.Handler.Warp.Types` |
+| `Hale.Warp.Network.Wai.Handler.Warp.Internal` | `Network.Wai.Handler.Warp.Internal` |
+| `Hale.Warp.Network.Wai.Handler.Warp.Date` | `Network.Wai.Handler.Warp.Date` |
+| `Hale.Warp.Network.Wai.Handler.Warp.Header` | `Network.Wai.Handler.Warp.Header` |
+| `Hale.Warp.Network.Wai.Handler.Warp.Buffer` | `Network.Wai.Handler.Warp.Buffer` |
+| `Hale.Warp.Network.Wai.Handler.Warp.File` | `Network.Wai.Handler.Warp.File` |
+| `Hale.Warp.Network.Wai.Handler.Warp.FdCache` | `Network.Wai.Handler.Warp.FdCache` |
+| `Hale.Warp.Network.Wai.Handler.Warp.FileInfoCache` | `Network.Wai.Handler.Warp.FileInfoCache` |
+| `Hale.Warp.Network.Wai.Handler.Warp.HTTP1` | `Network.Wai.Handler.Warp.HTTP1` |
+| `Hale.Warp.Network.Wai.Handler.Warp.HTTP2` | `Network.Wai.Handler.Warp.HTTP2` |
+| `Hale.Warp.Network.Wai.Handler.Warp.HTTP2.Request` | `Network.Wai.Handler.Warp.HTTP2.Request` |
+| `Hale.Warp.Network.Wai.Handler.Warp.HTTP2.Response` | `Network.Wai.Handler.Warp.HTTP2.Response` |
+| `Hale.Warp.Network.Wai.Handler.Warp.HTTP2.Types` | `Network.Wai.Handler.Warp.HTTP2.Types` |
+| `Hale.Warp.Network.Wai.Handler.Warp.Counter` | `Network.Wai.Handler.Warp.Counter` |
+| `Hale.Warp.Network.Wai.Handler.Warp.Conduit` | `Network.Wai.Handler.Warp.Conduit` |
+| `Hale.Warp.Network.Wai.Handler.Warp.ReadInt` | `Network.Wai.Handler.Warp.ReadInt` |
+| `Hale.Warp.Network.Wai.Handler.Warp.PackInt` | `Network.Wai.Handler.Warp.PackInt` |
+| `Hale.Warp.Network.Wai.Handler.Warp.RequestHeader` | `Network.Wai.Handler.Warp.RequestHeader` |
+| `Hale.Warp.Network.Wai.Handler.Warp.ResponseHeader` | `Network.Wai.Handler.Warp.ResponseHeader` |
+| `Hale.Warp.Network.Wai.Handler.Warp.SendFile` | `Network.Wai.Handler.Warp.SendFile` |
+| `Hale.Warp.Network.Wai.Handler.Warp.IO` | `Network.Wai.Handler.Warp.IO` |
+| `Hale.Warp.Network.Wai.Handler.Warp.HashMap` | `Network.Wai.Handler.Warp.HashMap` |
+| `Hale.Warp.Network.Wai.Handler.Warp.WithApplication` | `Network.Wai.Handler.Warp.WithApplication` |
+
+Reference: https://hackage.haskell.org/package/warp-tls
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.WarpTLS.Network.Wai.Handler.WarpTLS` | `Network.Wai.Handler.WarpTLS` |
+| `Hale.WarpTLS.Network.Wai.Handler.WarpTLS.Internal` | `Network.Wai.Handler.WarpTLS.Internal` |
+
+Reference: https://hackage.haskell.org/package/mime-types
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.MimeTypes.Network.Mime` | `Network.Mime` |
+
+Reference: https://hackage.haskell.org/package/wai-extra
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.WaiExtra.Network.Wai.Header` | `Network.Wai.Header` |
+| `Hale.WaiExtra.Network.Wai.Request` | `Network.Wai.Request` |
+| `Hale.WaiExtra.Network.Wai.Parse` | `Network.Wai.Parse` |
+| `Hale.WaiExtra.Network.Wai.Test` | `Network.Wai.Test` |
+| `Hale.WaiExtra.Network.Wai.Test.Internal` | `Network.Wai.Test.Internal` |
+| `Hale.WaiExtra.Network.Wai.UrlMap` | `Network.Wai.UrlMap` |
+| `Hale.WaiExtra.Network.Wai.EventSource` | `Network.Wai.EventSource` |
+| `Hale.WaiExtra.Network.Wai.EventSource.EventStream` | `Network.Wai.EventSource.EventStream` |
+| `Hale.WaiExtra.Network.Wai.Handler.CGI` | `Network.Wai.Handler.CGI` |
+| `Hale.WaiExtra.Network.Wai.Handler.SCGI` | `Network.Wai.Handler.SCGI` |
+| `Hale.WaiExtra.Network.Wai.Middleware.AcceptOverride` | `Network.Wai.Middleware.AcceptOverride` |
+| `Hale.WaiExtra.Network.Wai.Middleware.AddHeaders` | `Network.Wai.Middleware.AddHeaders` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Approot` | `Network.Wai.Middleware.Approot` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Autohead` | `Network.Wai.Middleware.Autohead` |
+| `Hale.WaiExtra.Network.Wai.Middleware.CleanPath` | `Network.Wai.Middleware.CleanPath` |
+| `Hale.WaiExtra.Network.Wai.Middleware.CombineHeaders` | `Network.Wai.Middleware.CombineHeaders` |
+| `Hale.WaiExtra.Network.Wai.Middleware.ForceDomain` | `Network.Wai.Middleware.ForceDomain` |
+| `Hale.WaiExtra.Network.Wai.Middleware.ForceSSL` | `Network.Wai.Middleware.ForceSSL` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Gzip` | `Network.Wai.Middleware.Gzip` |
+| `Hale.WaiExtra.Network.Wai.Middleware.HealthCheckEndpoint` | `Network.Wai.Middleware.HealthCheckEndpoint` |
+| `Hale.WaiExtra.Network.Wai.Middleware.HttpAuth` | `Network.Wai.Middleware.HttpAuth` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Jsonp` | `Network.Wai.Middleware.Jsonp` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Local` | `Network.Wai.Middleware.Local` |
+| `Hale.WaiExtra.Network.Wai.Middleware.MethodOverride` | `Network.Wai.Middleware.MethodOverride` |
+| `Hale.WaiExtra.Network.Wai.Middleware.MethodOverridePost` | `Network.Wai.Middleware.MethodOverridePost` |
+| `Hale.WaiExtra.Network.Wai.Middleware.RealIp` | `Network.Wai.Middleware.RealIp` |
+| `Hale.WaiExtra.Network.Wai.Middleware.RequestLogger` | `Network.Wai.Middleware.RequestLogger` |
+| `Hale.WaiExtra.Network.Wai.Middleware.RequestLogger.JSON` | `Network.Wai.Middleware.RequestLogger.JSON` |
+| `Hale.WaiExtra.Network.Wai.Middleware.RequestSizeLimit` | `Network.Wai.Middleware.RequestSizeLimit` |
+| `Hale.WaiExtra.Network.Wai.Middleware.RequestSizeLimit.Internal` | `Network.Wai.Middleware.RequestSizeLimit.Internal` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Rewrite` | `Network.Wai.Middleware.Rewrite` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Routed` | `Network.Wai.Middleware.Routed` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Select` | `Network.Wai.Middleware.Select` |
+| `Hale.WaiExtra.Network.Wai.Middleware.StreamFile` | `Network.Wai.Middleware.StreamFile` |
+| `Hale.WaiExtra.Network.Wai.Middleware.StripHeaders` | `Network.Wai.Middleware.StripHeaders` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Timeout` | `Network.Wai.Middleware.Timeout` |
+| `Hale.WaiExtra.Network.Wai.Middleware.ValidateHeaders` | `Network.Wai.Middleware.ValidateHeaders` |
+| `Hale.WaiExtra.Network.Wai.Middleware.Vhost` | `Network.Wai.Middleware.Vhost` |
+
+Reference: https://hackage.haskell.org/package/wai-http2-extra
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.WaiHttp2Extra.Network.Wai.Middleware.Push.Referer` | `Network.Wai.Middleware.Push.Referer` |
+| `Hale.WaiHttp2Extra.Network.Wai.Middleware.Push.Referer.Types` | `Network.Wai.Middleware.Push.Referer` (types) |
+| `Hale.WaiHttp2Extra.Network.Wai.Middleware.Push.Referer.LRU` | `Network.Wai.Middleware.Push.Referer` (LRU) |
+| `Hale.WaiHttp2Extra.Network.Wai.Middleware.Push.Referer.Manager` | `Network.Wai.Middleware.Push.Referer` (manager) |
+| `Hale.WaiHttp2Extra.Network.Wai.Middleware.Push.Referer.ParseURL` | `Network.Wai.Middleware.Push.Referer` (URL parsing) |
+
+Reference: Transitive dependencies (new)
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.TLS.Network.TLS.Context` | `Network.TLS` (context, via OpenSSL FFI) |
+| `Hale.TLS.Network.TLS.Config` | `Network.TLS` (config) |
+| `Hale.TLS.Network.TLS.Types` | `Network.TLS` (types) |
+| `Hale.DataDefault.Data.Default` | `Data.Default` |
+| `Hale.Cookie.Web.Cookie` | `Web.Cookie` |
+| `Hale.FastLogger.System.Log.FastLogger` | `System.Log.FastLogger` |
+| `Hale.WaiLogger.Network.Wai.Logger` | `Network.Wai.Logger` |
+| `Hale.ResourceT.Control.Monad.Trans.Resource` | `Control.Monad.Trans.Resource` |
+| `Hale.Base64.Data.ByteString.Base64` | `Data.ByteString.Base64` |
+| `Hale.AnsiTerminal.System.Console.ANSI` | `System.Console.ANSI` |
+| `Hale.PSQueues.Data.IntPSQ` | `Data.IntPSQ` |
 
 ## Folder Organization Policy
 

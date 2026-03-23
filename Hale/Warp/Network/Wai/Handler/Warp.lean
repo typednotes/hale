@@ -21,10 +21,13 @@
   ```
 -/
 
+import Hale.Warp.Network.Wai.Handler.Warp.Types
+import Hale.Warp.Network.Wai.Handler.Warp.Internal
 import Hale.Warp.Network.Wai.Handler.Warp.Settings
 import Hale.Warp.Network.Wai.Handler.Warp.Request
 import Hale.Warp.Network.Wai.Handler.Warp.Response
 import Hale.Warp.Network.Wai.Handler.Warp.Run
+import Hale.Warp.Network.Wai.Handler.Warp.WithApplication
 
 namespace Network.Wai.Handler.Warp
 

@@ -41,6 +41,18 @@ def ResponseReceived.done : ResponseReceived := ⟨⟩
     $$\text{StreamingBody} = (\text{ByteArray} \to \text{IO}()) \to \text{IO}() \to \text{IO}()$$ -/
 abbrev StreamingBody := (ByteArray → IO Unit) → IO Unit → IO Unit
 
+/-- The size of the request body.
+    In the case of chunked transfer encoding, the size is unknown.
+    $$\text{RequestBodyLength} = \text{ChunkedBody} \mid \text{KnownLength}\ \mathbb{N}$$
+    @since 1.4.0 -/
+inductive RequestBodyLength where
+  /-- Chunked transfer encoding — size unknown. -/
+  | chunkedBody
+  /-- Content-Length header present — size known.
+      $$\text{KnownLength}\ n,\; n : \mathbb{N}$$ -/
+  | knownLength (bytes : Nat)
+deriving BEq, Repr
+
 /-- An HTTP request with all parsed information.
     $$\text{Request} = \{ \text{method}, \text{version}, \text{path}, \text{query}, \text{headers}, \ldots \}$$ -/
 structure Request where
@@ -48,13 +60,18 @@ structure Request where
   requestMethod : Method
   /-- The HTTP version. -/
   httpVersion : HttpVersion
-  /-- The raw path info (e.g., "/foo/bar"). -/
+  /-- The raw path info (e.g., "/foo/bar").
+      Middlewares should not modify this — modify `pathInfo` instead. -/
   rawPathInfo : String
-  /-- The raw query string (e.g., "?key=val"). -/
+  /-- The raw query string (e.g., "?key=val"), including leading '?'.
+      Do not modify this raw value — modify `queryString` instead. -/
   rawQueryString : String
   /-- The request headers. -/
   requestHeaders : RequestHeaders
-  /-- Whether the connection is secure (HTTPS). -/
+  /-- Whether the current connection is secure (HTTPS/TLS).
+      Note: does not reflect whether the original client connection was secure
+      (e.g., behind a reverse proxy). Use `Network.Wai.Request.appearsSecure`
+      for a more complete check. -/
   isSecure : Bool
   /-- The remote client address. -/
   remoteHost : SockAddr
@@ -63,19 +80,21 @@ structure Request where
   /-- Parsed query string. -/
   queryString : Query
   /-- IO action to read the next chunk of the request body.
-      Returns empty ByteArray when body is exhausted. -/
+      Returns empty ByteArray when body is exhausted.
+      Each call consumes a chunk — this is not idempotent. -/
   requestBody : IO ByteArray
   /-- Per-request extensible storage. -/
   vault : Data.Vault
-  /-- Content length if known from headers. -/
-  requestBodyLength : Option Nat
-  /-- The Host header value. -/
+  /-- The size of the request body — chunked or known length.
+      @since 1.4.0 -/
+  requestBodyLength : RequestBodyLength
+  /-- The Host header value. @since 2.0.0 -/
   requestHeaderHost : Option String
-  /-- The Range header value. -/
+  /-- The Range header value. @since 2.0.0 -/
   requestHeaderRange : Option String
-  /-- The Referer header value. -/
+  /-- The Referer header value. @since 3.2.0 -/
   requestHeaderReferer : Option String
-  /-- The User-Agent header value. -/
+  /-- The User-Agent header value. @since 3.2.0 -/
   requestHeaderUserAgent : Option String
 
 /-- An HTTP response. -/

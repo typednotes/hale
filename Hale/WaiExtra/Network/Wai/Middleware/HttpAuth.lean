@@ -1,0 +1,49 @@
+/-
+  Network.Wai.Middleware.HttpAuth — HTTP Basic Authentication
+
+  Provides middleware for HTTP Basic Authentication using the
+  Authorization header.
+-/
+import Hale.WAI
+import Hale.HttpTypes
+import Hale.Base64
+
+namespace Network.Wai.Middleware
+
+open Network.Wai
+open Network.HTTP.Types
+
+/-- Check function type: given username and password, return whether access is granted. -/
+abbrev CheckCreds := String → String → IO Bool
+
+/-- HTTP Basic Authentication middleware.
+    Checks the Authorization header against the provided credential checker.
+    Returns 401 Unauthorized if credentials are missing or invalid.
+    $$\text{basicAuth} : \text{CheckCreds} \to \text{String} \to \text{Middleware}$$
+    The `realm` parameter is displayed in the browser's auth dialog. -/
+def basicAuth (check : CheckCreds) (realm : String := "Restricted") : Middleware :=
+  fun app req respond => do
+    let authHeader := req.requestHeaders.find? (fun (n, _) => n == hAuthorization)
+    match authHeader with
+    | some (_, value) =>
+      if value.startsWith "Basic " then
+        let encoded := (value.drop 6).toString
+        match Data.ByteString.Base64.decode encoded with
+        | some decoded =>
+          let credStr := String.fromUTF8! decoded
+          match credStr.splitOn ":" with
+          | user :: rest =>
+            let pass := ":".intercalate rest
+            let ok ← check user pass
+            if ok then app req respond
+            else respond (unauthorized realm)
+          | _ => respond (unauthorized realm)
+        | none => respond (unauthorized realm)
+      else respond (unauthorized realm)
+    | none => respond (unauthorized realm)
+where
+  unauthorized (realm : String) : Response :=
+    .responseBuilder status401
+      [(Data.CI.mk' "WWW-Authenticate", s!"Basic realm=\"{realm}\"")] "Unauthorized".toUTF8
+
+end Network.Wai.Middleware
