@@ -46,14 +46,29 @@ middleware, and server speaks WAI.
 
 ## Core Types
 
-### Application (CPS Pattern)
+### Application (CPS + Indexed Monad)
 ```lean
 abbrev Application :=
-  Request -> (Response -> IO ResponseReceived) -> IO ResponseReceived
+  Request -> (Response -> IO ResponseReceived) -> AppM .pending .sent ResponseReceived
 ```
-The continuation-passing style ensures exactly one response per request.
-`ResponseReceived` is an opaque token -- the only way to obtain it is
-by calling the `respond` callback.
+
+The return type `AppM .pending .sent ResponseReceived` is an **indexed monad**
+that leverages Lean 4's dependent types to enforce exactly-once response at
+compile time:
+
+- **`.pending → .sent`**: The application must transition from "no response"
+  to "response sent". `AppM.respond` is the only combinator that performs
+  this transition.
+- **No double-respond**: After `respond`, the state is `.sent`. A second
+  `respond` would need `AppM .sent .sent`, which does not exist -- **type error**.
+- **No skip-respond**: The return type demands `.sent` as post-state.
+  Returning without calling `respond` would leave the state at `.pending`
+  -- **type error**.
+- **No fabrication**: `AppM.mk` is `private`. Application code cannot
+  construct the value without going through the real combinators.
+
+This is strictly stronger than Haskell's WAI, where the contract is a
+gentleman's agreement. Here the Lean 4 kernel verifies it.
 
 ### Middleware (Monoid under Composition)
 ```lean
@@ -117,11 +132,12 @@ inductive RequestBodyLength where
 | `modifyResponse_id` | `Wai` |
 | `ifRequest_false` | `Wai` |
 
-### Axiom-Dependent Property
-- **Response linearity:** The `respond` callback must be invoked exactly once.
-  `ResponseReceived` proves invocation happened but cannot prevent double
-  invocation without linear types. Documented as an axiom-dependent contract
-  matching Haskell WAI.
+### Response Linearity (Compile-Time Guarantee)
+- **Exactly-once response:** The indexed `AppM` monad enforces at the type level
+  that `respond` is invoked exactly once. `AppM .pending .sent ResponseReceived`
+  can only be produced via `AppM.respond` (which transitions `.pending → .sent`).
+  Double-respond is a compile-time error: no combinator transitions `.sent → .sent`.
+  The `private mk` on `AppM` prevents circumventing the guarantee.
 
 ## Files
 - `Hale/WAI/Network/Wai/Internal.lean` -- Core types + 11 accessor theorems

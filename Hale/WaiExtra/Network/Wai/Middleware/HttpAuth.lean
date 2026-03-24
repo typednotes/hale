@@ -22,7 +22,7 @@ abbrev CheckCreds := String → String → IO Bool
     $$\text{basicAuth} : \text{CheckCreds} \to \text{String} \to \text{Middleware}$$
     The `realm` parameter is displayed in the browser's auth dialog. -/
 def basicAuth (check : CheckCreds) (realm : String := "Restricted") : Middleware :=
-  fun app req respond => do
+  fun app req respond =>
     let authHeader := req.requestHeaders.find? (fun (n, _) => n == hAuthorization)
     match authHeader with
     | some (_, value) =>
@@ -34,13 +34,13 @@ def basicAuth (check : CheckCreds) (realm : String := "Restricted") : Middleware
           match credStr.splitOn ":" with
           | user :: rest =>
             let pass := ":".intercalate rest
-            let ok ← check user pass
+            AppM.ioThen (check user pass) fun ok =>
             if ok then app req respond
-            else respond (unauthorized realm)
-          | _ => respond (unauthorized realm)
-        | none => respond (unauthorized realm)
-      else respond (unauthorized realm)
-    | none => respond (unauthorized realm)
+            else AppM.respond respond (unauthorized realm)
+          | _ => AppM.respond respond (unauthorized realm)
+        | none => AppM.respond respond (unauthorized realm)
+      else AppM.respond respond (unauthorized realm)
+    | none => AppM.respond respond (unauthorized realm)
 where
   unauthorized (realm : String) : Response :=
     .responseBuilder status401

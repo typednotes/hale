@@ -359,16 +359,25 @@ constructor, documented as TODO).
 |---------|---------------|
 | `ci_eq_iff` | CI equality is by foldedCase |
 
-## Socket State (7, in `Network/Socket/Types.lean`)
+## Socket State (11, in `Network/Socket/Types.lean`)
 | Theorem | What it proves |
 |---------|---------------|
 | `SocketState.fresh_ne_bound` | fresh /= bound |
 | `SocketState.fresh_ne_listening` | fresh /= listening |
 | `SocketState.fresh_ne_connected` | fresh /= connected |
+| `SocketState.fresh_ne_closed` | fresh /= closed |
 | `SocketState.bound_ne_listening` | bound /= listening |
 | `SocketState.bound_ne_connected` | bound /= connected |
+| `SocketState.bound_ne_closed` | bound /= closed |
 | `SocketState.listening_ne_connected` | listening /= connected |
+| `SocketState.listening_ne_closed` | listening /= closed |
+| `SocketState.connected_ne_closed` | connected /= closed |
 | `SocketState.beq_refl` | s == s = true |
+
+## Response Lifecycle (1, in `WAI/Network/Wai/Internal.lean`)
+| Theorem | What it proves |
+|---------|---------------|
+| `ResponseState.pending_ne_sent` | pending /= sent |
 
 ## Path Safety (4, in `WaiAppStatic/Types.lean`)
 | Theorem | What it proves |

@@ -20,7 +20,7 @@ def forceSSL : Middleware :=
     else
       let host := req.requestHeaderHost.getD "localhost"
       let url := "https://" ++ host ++ req.rawPathInfo ++ req.rawQueryString
-      respond (.responseBuilder status301 [(hLocation, url)] ByteArray.empty)
+      AppM.respond respond (.responseBuilder status301 [(hLocation, url)] ByteArray.empty)
 
 /-- Secure requests pass through the forceSSL middleware unchanged.
     $$\forall\, \text{req},\; \text{req.isSecure} = \text{true} \implies \text{forceSSL}(\text{app}, \text{req}) = \text{app}(\text{req})$$ -/

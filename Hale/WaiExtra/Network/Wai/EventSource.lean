@@ -34,7 +34,7 @@ def ServerEvent.render (ev : ServerEvent) : String :=
     $$\text{eventSourceApp} : ((\text{ServerEvent} \to \text{IO Unit}) \to \text{IO Unit}) \to \text{Application}$$ -/
 def eventSourceApp (eventSource : (ServerEvent → IO Unit) → IO Unit) : Application :=
   fun _req respond =>
-    respond (.responseStream status200
+    AppM.respond respond (.responseStream status200
       [(hContentType, "text/event-stream"),
        (Data.CI.mk' "Cache-Control", "no-cache"),
        (hConnection, "keep-alive")]

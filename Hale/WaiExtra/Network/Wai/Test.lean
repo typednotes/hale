@@ -56,12 +56,12 @@ def toWaiRequest (sreq : SRequest) : Request :=
 def runSession (app : Application) (sreq : SRequest) : IO SResponse := do
   let waiReq := toWaiRequest sreq
   let resultRef ← IO.mkRef (none : Option SResponse)
-  let _received ← app waiReq fun resp => do
+  let _received ← (app waiReq fun resp => do
     let body := match resp with
       | .responseBuilder _ _ b => b
       | _ => ByteArray.empty  -- File/stream responses return empty in test
     resultRef.set (some ⟨resp.status, resp.headers, body⟩)
-    return ResponseReceived.done
+    return ResponseReceived.done).run
   match ← resultRef.get with
   | some r => return r
   | none => throw (IO.Error.userError "Application did not call respond")

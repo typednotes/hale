@@ -21,7 +21,7 @@ def cleanPath : Middleware :=
     let cleaned := cleanPathStr path
     if cleaned != path && !path.isEmpty then
       let url := cleaned ++ req.rawQueryString
-      respond (.responseBuilder status301 [(hLocation, url)] ByteArray.empty)
+      AppM.respond respond (.responseBuilder status301 [(hLocation, url)] ByteArray.empty)
     else
       app req respond
 where

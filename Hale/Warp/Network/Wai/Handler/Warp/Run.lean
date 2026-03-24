@@ -14,14 +14,23 @@
     a `RecvBuffer` once, then loops over requests until the client
     signals `Connection: close` or the connection drops.
 
-  ## Guarantees
+  ## Dependent-Type Guarantees
 
-  - Server socket is cleaned up via `try/finally`
-  - Client sockets are closed after handling via `try/finally`
-  - Exception in one connection does not crash the server
-  - Keep-alive follows HTTP/1.1 semantics (default keep-alive, close on request)
-  - `acceptLoop` requires a listening socket (compile-time)
-  - `runConnection` requires a connected socket (compile-time)
+  This module is the **trust boundary** between the type-safe application
+  world and the raw IO world.  The server provides the `respond` callback
+  and calls `(app req respond).run` to extract the `IO` action.  The
+  `AppM` indexed monad ensures that by the time `.run` is called, the
+  application has invoked `respond` exactly once.
+
+  The socket phantom types flow through the entire call chain:
+  - `acceptLoop` requires `Socket .listening` (compile-time)
+  - `accept` returns `Socket .connected` (compile-time)
+  - `runConnection` requires `Socket .connected` (compile-time)
+  - `close` requires `state ≠ .closed` proof (compile-time)
+
+  Keep-alive semantics are proven correct:
+  - `connAction_http10_default`: HTTP/1.0 defaults to close
+  - `connAction_http11_default`: HTTP/1.1 defaults to keep-alive
 -/
 
 import Hale.WAI
@@ -90,12 +99,12 @@ partial def runConnection (clientSock : Socket .connected) (remoteAddr : SockAdd
       | none => keepGoing := false  -- Connection closed or malformed
       | some req =>
         let action := connAction req
-        let _received ← app req fun resp => do
+        let _received ← (app req fun resp => do
           -- Add Connection header to response when closing
           let resp' := if action == .close then
             resp.mapResponseHeaders ((hConnection, "close") :: ·)
           else resp
-          sendResponse clientSock settings req resp'
+          sendResponse clientSock settings req resp').run
         -- Drain any unread body bytes before next request
         if action == .keepAlive then
           -- Only drain body if there are unread bytes
@@ -113,7 +122,7 @@ partial def runConnection (clientSock : Socket .connected) (remoteAddr : SockAdd
     settings.settingsOnException (some remoteAddr)
     IO.eprintln s!"Warp: connection error from {remoteAddr}: {e}"
   finally
-    Network.Socket.close clientSock
+    let _ ← Network.Socket.close clientSock
 
 /-- Accept loop: continuously accepts connections and spawns tasks.
     Each accepted connection is handled in a separate task via `IO.asTask`.
@@ -138,6 +147,6 @@ def runSettings (settings : Settings) (app : Application) : IO Unit := do
     settings.settingsBeforeMainLoop
     acceptLoop serverSock settings app
   finally
-    Network.Socket.close serverSock
+    let _ ← Network.Socket.close serverSock
 
 end Network.Wai.Handler.Warp

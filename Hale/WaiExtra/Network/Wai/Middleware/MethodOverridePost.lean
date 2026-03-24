@@ -16,15 +16,13 @@ open Network.HTTP.Types
     Note: This consumes the request body to find the parameter.
     $$\text{methodOverridePost} : \text{Middleware}$$ -/
 def methodOverridePost : Middleware :=
-  fun app req respond => do
+  fun app req respond =>
     if req.requestMethod == .standard .POST then
-      -- Read first chunk to check for _method
-      let chunk ← req.requestBody
-      let bodyStr := String.fromUTF8! chunk
-      let params := parseSimpleQuery bodyStr
-      match params.find? (fun (k, _) => k == "_method") with
-      | some (_, v) =>
-        -- Create a new body reader that returns this chunk then original body
+      AppM.ioThen (do
+        -- Read first chunk to check for _method
+        let chunk ← req.requestBody
+        let bodyStr := String.fromUTF8! chunk
+        let params := parseSimpleQuery bodyStr
         let returned ← IO.mkRef false
         let newBody : IO ByteArray := do
           let done ← returned.get
@@ -32,17 +30,12 @@ def methodOverridePost : Middleware :=
           else
             returned.set true
             return chunk
-        app { req with requestMethod := parseMethod v, requestBody := newBody } respond
-      | none =>
-        -- No _method found; reconstruct body with the chunk we read
-        let returned ← IO.mkRef false
-        let newBody : IO ByteArray := do
-          let done ← returned.get
-          if done then req.requestBody
-          else
-            returned.set true
-            return chunk
-        app { req with requestBody := newBody } respond
+        match params.find? (fun (k, _) => k == "_method") with
+        | some (_, v) =>
+          pure { req with requestMethod := parseMethod v, requestBody := newBody }
+        | none =>
+          pure { req with requestBody := newBody })
+        fun req' => app req' respond
     else
       app req respond
 where

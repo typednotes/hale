@@ -99,32 +99,52 @@ inductive Transport where
 - `connAction_http10_default`: HTTP/1.0 without Connection header -> close
 - `connAction_http11_default`: HTTP/1.1 without Connection header -> keep-alive
 
-## Dependent Types in Warp
+## How Lean 4's Dependent Types Secure the Warp Server
 
-### Socket State Machine
+Warp is where every dependent-type technique in Hale converges: phantom
+state machines, proof-carrying structures, and indexed monads all
+cooperate to make entire classes of server bugs **unrepresentable**.
+
+### Socket State Machine (phantom type parameter)
 ```lean
-structure Socket (state : SocketState) where   -- phantom parameter
+structure Socket (state : SocketState) where   -- phantom parameter, erased at runtime
   raw : RawSocket
 
--- API enforces valid transitions:
+-- Every function declares its pre/post state:
 listenTCP  : ... -> IO (Socket .listening)
-accept     : Socket .listening -> IO (Socket .connected x SockAddr)
--- Impossible: accept (Socket .fresh)  <-- compile error!
+accept     : Socket .listening -> IO (Socket .connected × SockAddr)
+send       : Socket .connected -> ByteArray -> IO Nat
+close      : Socket state -> (state ≠ .closed := by decide) -> IO (Socket .closed)
+
+-- All of these are compile-time errors (not runtime, not asserts):
+-- accept freshSocket       -- .fresh ≠ .listening
+-- send listeningSocket     -- .listening ≠ .connected
+-- close closedSocket       -- cannot prove .closed ≠ .closed
 ```
 
-### Settings with Invariants
+### Exactly-Once Response (indexed monad)
+
+The server provides a `respond` callback and calls `(app req respond).run`.
+The `AppM .pending .sent` return type guarantees that by the time `.run`
+executes, the application has called `respond` exactly once:
+```lean
+-- In runConnection (the trust boundary):
+let _received ← (app req fun resp => sendResponse sock settings req resp).run
+```
+
+### Settings with Proof Fields (zero-cost invariants)
 ```lean
 structure Settings where
   settingsPort : UInt16
   settingsTimeout : Nat := 30
   settingsBacklog : Nat := 128
-  settingsTimeoutPos : settingsTimeout > 0 := by omega
-  settingsBacklogPos : settingsBacklog > 0 := by omega
+  settingsTimeoutPos : settingsTimeout > 0 := by omega   -- erased at runtime
+  settingsBacklogPos : settingsBacklog > 0 := by omega   -- erased at runtime
 ```
 
-The proof fields `settingsTimeoutPos` and `settingsBacklogPos` are erased
-at runtime (zero cost). It is impossible to construct a `Settings` with
-a zero timeout or zero backlog.
+The proof fields are **erased at compile time** (zero cost, same `sizeof`).
+It is impossible to construct a `Settings` with a zero timeout or zero
+backlog -- the `by omega` obligation cannot be discharged for `0 > 0`.
 
 ### InvalidRequest (Exhaustive Error Model)
 ```lean

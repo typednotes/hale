@@ -25,7 +25,7 @@ def formatJSON (req : Request) (status : Status) : String :=
     $$\text{logJSON} : \text{IO Middleware}$$ -/
 def logJSON : IO Middleware := do
   let logger ← System.Log.FastLogger.newLoggerSet .stdout
-  return fun app req respond => do
+  return fun app req respond =>
     app req fun resp => do
       let line := formatJSON req resp.status
       System.Log.FastLogger.pushLogStr logger (line ++ "\n")

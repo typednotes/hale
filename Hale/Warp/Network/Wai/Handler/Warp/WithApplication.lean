@@ -38,7 +38,7 @@ def withApplicationSettings (settings : Settings) (mkApp : IO Application)
         acceptLoop sock settings app
     catch _ => pure ()
     finally
-      Network.Socket.close sock
+      let _ ← Network.Socket.close sock
   try
     -- Give server a moment to start accepting
     IO.sleep 50

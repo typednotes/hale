@@ -9,12 +9,18 @@
   performance and generality. Uses a streaming interface for request and
   response bodies paired with ByteArray.
 
-  ## Guarantees
+  ## Lean 4 Dependent-Type Guarantees (compile-time, zero-cost)
 
-  - `ResponseReceived` token ensures the response callback was invoked
-  - `Application` CPS type enables safe resource management via bracket
-  - `Middleware` composition is associative
-  - Request body reading is streaming and non-idempotent (each chunk consumed once)
+  - **Exactly-once response:** The `AppM .pending .sent` indexed monad
+    enforces at the type level that every `Application` invokes `respond`
+    exactly once.  Double-respond and no-respond are both type errors.
+  - **Middleware algebra:** `Middleware = Application → Application`.
+    Proven: `id ∘ m = m`, `m ∘ id = m`, `modifyRequest id = id`,
+    `modifyResponse id = id`, `ifRequest (fun _ => false) m = id`.
+  - **CPS bracket safety:** The continuation-passing style lets the server
+    bracket resources (buffers, connections) around the response.
+  - **Streaming body:** Request body reading is non-idempotent (each chunk
+    consumed once) -- encoded by the `IO ByteArray` action type.
 -/
 
 import Hale.WAI.Network.Wai.Internal

@@ -64,11 +64,11 @@ private partial def tlsConnection (ctx : TLSContext) (clientSock : Socket .conne
         | some req =>
           let secureReq := { req with isSecure := true }
           let action := connAction secureReq
-          let _received ← app secureReq fun resp => do
+          let _received ← (app secureReq fun resp => do
             let resp' := if action == .close then
               resp.mapResponseHeaders ((hConnection, "close") :: ·)
             else resp
-            sendResponse clientSock settings secureReq resp'
+            sendResponse clientSock settings secureReq resp').run
           if action != .keepAlive then keepGoing := false
     finally
       Network.TLS.close session
@@ -76,7 +76,7 @@ private partial def tlsConnection (ctx : TLSContext) (clientSock : Socket .conne
     settings.settingsOnException (some remoteAddr)
     IO.eprintln s!"WarpTLS: connection error from {remoteAddr}: {e}"
   finally
-    Network.Socket.close clientSock
+    let _ ← Network.Socket.close clientSock
 
 /-- Accept loop for TLS connections. -/
 private partial def tlsAcceptLoop (ctx : TLSContext) (serverSock : Socket .listening)
@@ -100,6 +100,6 @@ partial def runTLS (tlsSettings : TLSSettings) (settings : Settings)
     settings.settingsBeforeMainLoop
     tlsAcceptLoop ctx serverSock settings app
   finally
-    Network.Socket.close serverSock
+    let _ ← Network.Socket.close serverSock
 
 end Network.Wai.Handler.WarpTLS

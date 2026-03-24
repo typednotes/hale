@@ -19,7 +19,7 @@ def tests : IO (List TestResult) := do
     let (sock, _) ← getSocketTCP "127.0.0.1" 9877
     let _ ← Network.Socket.send sock "ping".toUTF8
     let resp ← Network.Socket.recv sock 1024
-    Network.Socket.close sock
+    let _ ← Network.Socket.close sock
     pure (String.fromUTF8! resp)
   let (clientSock, addr) ← acceptSafe server
   let appData := mkAppData clientSock addr
@@ -28,7 +28,7 @@ def tests : IO (List TestResult) := do
   appData.appWrite "pong".toUTF8
   IO.sleep 50
   appData.appClose
-  Network.Socket.close server
+  let _ ← Network.Socket.close server
   let clientResp ← IO.ofExcept clientTask.get
   pure [
     checkEq "streaming recv" "ping" received

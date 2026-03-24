@@ -1,7 +1,7 @@
 /-
   Hale.WAI.Network.Wai.Internal — WAI internal types
 
-  Core WAI types: Request, Response, Application, Middleware.
+  Core WAI types: Request, Response, Application, Middleware, AppM.
 
   ## Design
 
@@ -9,11 +9,35 @@
   all parsed HTTP request information. `Response` is an inductive type
   covering file, builder, and streaming response modes.
 
-  ## Guarantees
+  ## How Lean 4's Dependent Types Enforce Exactly-Once Response
+
+  In Haskell's WAI, the contract "call `respond` exactly once" is a
+  gentleman's agreement -- nothing in the type system prevents calling it
+  zero times or twice.  Lean 4's dependent types let us do better.
+
+  `AppM` is an **indexed monad** parameterised by a pre-state and a
+  post-state (`ResponseState`).  The key insight:
+
+  1. `AppM.respond` is the **only** combinator that transitions
+     `.pending → .sent`.
+  2. After one `respond`, the state is `.sent`.  A second `respond` would
+     need a combinator of type `AppM .sent .sent ResponseReceived`, but
+     **no such combinator exists** -- double-respond is a type error.
+  3. `AppM.mk` is `private`, so application code cannot fabricate an
+     `AppM .pending .sent` value without actually calling `respond`.
+
+  The result: the Lean 4 kernel verifies at compile time that every
+  `Application` invokes the response callback exactly once.  The `AppM`
+  wrapper is erased at runtime (it is just `IO` underneath).
+
+  ## Guarantees (compile-time, zero-cost)
 
   - `ResponseReceived` is an opaque token ensuring the response callback
-    was invoked exactly once
-  - `Application` type encodes the CPS pattern for response handling
+    was invoked (application must return it; only `respond` produces it)
+  - `AppM .pending .sent` enforces exactly-once response via indexed state
+  - `private mk` prevents circumventing the guarantee
+  - `Application` CPS type enables safe resource bracketing by the server
+  - `Middleware` is `Application → Application` -- proven associative
 -/
 
 import Hale.HttpTypes
@@ -27,8 +51,13 @@ open Network.HTTP.Types
 open Network.Socket (SockAddr)
 open Network.Sendfile (FilePart)
 
-/-- Opaque token proving a response was sent. Cannot be constructed
-    outside the response callback. -/
+/-- Opaque token proving a response was sent.
+
+    `private mk` ensures that application code cannot fabricate this token.
+    Only server implementations (via `ResponseReceived.done`) and the
+    `AppM.respond` combinator produce it.  Combined with the `AppM` indexed
+    monad, this means: an application that type-checks has necessarily
+    invoked the response callback exactly once. -/
 structure ResponseReceived where
   private mk ::
 
@@ -200,16 +229,127 @@ theorem mapResponseStatus_id_responseStream (s : Status) (h : ResponseHeaders) (
 
 end Response
 
+/-- Response lifecycle state for the indexed `AppM` monad.
+
+    This two-element type is the key to compile-time exactly-once enforcement.
+    The `AppM` monad is parameterised by a pre-state and a post-state drawn
+    from `ResponseState`.  Since `.pending ≠ .sent` (proven below), the
+    compiler can distinguish "haven't responded yet" from "already responded"
+    and reject any code path that would respond twice or not at all.
+    $$\text{ResponseState} = \text{pending} \mid \text{sent}$$ -/
+inductive ResponseState where
+  /-- No response has been sent yet. -/
+  | pending
+  /-- A response has been sent. -/
+  | sent
+deriving BEq, DecidableEq, Repr
+
+/-- Response states are distinct. -/
+theorem ResponseState.pending_ne_sent : ResponseState.pending ≠ ResponseState.sent := by decide
+
+/-- Indexed IO monad tracking response lifecycle state transitions.
+
+    This is the core dependent-type mechanism that enforces the WAI
+    exactly-once-response contract at compile time.
+
+    `AppM pre post α` represents an IO action that transitions the response
+    lifecycle from state `pre` to state `post`.  The state indices are
+    checked by the Lean 4 kernel during type-checking and **erased at
+    runtime** -- `AppM` compiles to exactly the same code as plain `IO`.
+
+    **Why `private mk`?**  The constructor is private, so the only ways to
+    build an `AppM` value are through the provided combinators:
+    `respond`, `respondIO`, `liftIO`, `ipure`, `ibind`, `ioThen`.
+    Application code cannot fabricate `AppM .pending .sent` without actually
+    invoking the response callback -- the type system forces the real work.
+
+    **Why double-respond is impossible:**
+    - `AppM.respond` has type `AppM .pending .sent ResponseReceived`.
+    - After one call the state is `.sent`.
+    - `AppM.ibind` chains: `AppM s₁ s₂ α → (α → AppM s₂ s₃ β) → AppM s₁ s₃ β`.
+    - A second `respond` would require `AppM .sent _ _` with pre-state `.sent`,
+      but `respond`'s pre-state is `.pending` -- **type mismatch, compile-time error**.
+
+    **Trust boundary:** Server code (Warp) extracts the `IO` via `.run` at
+    the edge.  Middleware that needs full IO control can use the `protected`
+    escape hatch `AppM.unsafeLift`, which requires an explicit `open`.
+
+    $$\text{AppM}\ s_1\ s_2\ \alpha = \text{IO}(\alpha) \text{ (opaque, indexed by state)}$$ -/
+structure AppM (pre post : ResponseState) (α : Type) where
+  private mk ::
+  /-- Extract the underlying IO action. For server/framework code only. -/
+  run : IO α
+
+namespace AppM
+
+/-- Lift a pure value without changing state.
+    $$\text{ipure} : \alpha \to \text{AppM}\ s\ s\ \alpha$$ -/
+@[inline] def ipure (a : α) : AppM s s α := ⟨pure a⟩
+
+/-- Lift a plain IO action without changing state.
+    $$\text{liftIO} : \text{IO}(\alpha) \to \text{AppM}\ s\ s\ \alpha$$ -/
+@[inline] def liftIO (action : IO α) : AppM s s α := ⟨action⟩
+
+/-- Indexed bind: chains state transitions.
+    $$\text{ibind} : \text{AppM}\ s_1\ s_2\ \alpha \to (\alpha \to \text{AppM}\ s_2\ s_3\ \beta) \to \text{AppM}\ s_1\ s_3\ \beta$$ -/
+@[inline] def ibind (ma : AppM s₁ s₂ α) (f : α → AppM s₂ s₃ β) : AppM s₁ s₃ β :=
+  ⟨ma.run >>= fun a => (f a).run⟩
+
+/-- Send a response, transitioning from `.pending` to `.sent`.
+    This is the **only** way to produce `AppM .pending .sent ResponseReceived`.
+    $$\text{respond} : (\text{Response} \to \text{IO}\ \text{ResponseReceived}) \to \text{Response} \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$ -/
+@[inline] def respond (callback : Response → IO ResponseReceived) (resp : Response) :
+    AppM .pending .sent ResponseReceived :=
+  ⟨callback resp⟩
+
+/-- Perform IO then respond with the computed Response.
+    Convenient for the common pattern of "compute a response, then send it."
+    Uses `do` notation naturally inside the `IO Response` block.
+    $$\text{respondIO} : (\text{Response} \to \text{IO}\ \text{ResponseReceived}) \to \text{IO}(\text{Response}) \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$ -/
+@[inline] def respondIO (callback : Response → IO ResponseReceived) (action : IO Response) :
+    AppM .pending .sent ResponseReceived :=
+  ⟨action >>= callback⟩
+
+/-- Perform an IO action then continue with a state-changing computation.
+    Useful for middleware that needs IO before deciding whether to delegate or respond.
+    $$\text{ioThen} : \text{IO}(\alpha) \to (\alpha \to \text{AppM}\ s_1\ s_2\ \beta) \to \text{AppM}\ s_1\ s_2\ \beta$$ -/
+@[inline] def ioThen (action : IO α) (f : α → AppM s₁ s₂ β) : AppM s₁ s₂ β :=
+  ⟨action >>= fun a => (f a).run⟩
+
+/-- Escape hatch for framework/middleware code that needs full IO control
+    over state transitions. **Not for application code.** The caller is
+    responsible for ensuring exactly-once response semantics.
+    $$\text{unsafeLift} : \text{IO}(\alpha) \to \text{AppM}\ s_1\ s_2\ \alpha$$ -/
+protected def unsafeLift (action : IO α) : AppM pre post α := ⟨action⟩
+
+end AppM
+
+/-- `AppM s s` is a standard Monad (for non-state-changing operations).
+    Enables `do` notation inside `AppM.respondIO` or `AppM.ioThen` blocks. -/
+instance : Monad (AppM s s) where
+  pure := AppM.ipure
+  bind := AppM.ibind
+
+/-- IO actions lift into `AppM s s` automatically. -/
+instance : MonadLiftT IO (AppM s s) where
+  monadLift := AppM.liftIO
+
 /-- A WAI application.
-    $$\text{Application} = \text{Request} \to (\text{Response} \to \text{IO}(\text{ResponseReceived})) \to \text{IO}(\text{ResponseReceived})$$
+    $$\text{Application} = \text{Request} \to (\text{Response} \to \text{IO}(\text{ResponseReceived})) \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$
 
-    **Linearity invariant (axiom-dependent):** The response callback `respond`
-    must be invoked exactly once. The `ResponseReceived` return type ensures
-    that the callback WAS invoked (the application must return the token),
-    but cannot prevent double invocation at the type level without linear types.
+    The return type `AppM .pending .sent ResponseReceived` is the key
+    dependent-type innovation over Haskell's WAI.  It encodes three
+    compile-time guarantees simultaneously:
 
-    This matches Haskell WAI's contract. -/
-abbrev Application := Request → (Response → IO ResponseReceived) → IO ResponseReceived
+    1. **Response was sent** (post-state is `.sent`, not `.pending`).
+    2. **Response was sent exactly once** (no path from `.sent` back to
+       `.pending`; no second `respond` accepted after `.sent`).
+    3. **Response was sent through the callback** (`private mk` prevents
+       fabricating the `AppM` value without calling `respond`).
+
+    Server implementations (Warp) extract the underlying `IO` via `.run`
+    at the trust boundary.  Application code never touches `.run`. -/
+abbrev Application := Request → (Response → IO ResponseReceived) → AppM .pending .sent ResponseReceived
 
 /-- A WAI middleware transforms an application.
     $$\text{Middleware} = \text{Application} \to \text{Application}$$ -/

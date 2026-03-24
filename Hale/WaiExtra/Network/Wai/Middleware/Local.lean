@@ -19,6 +19,6 @@ def localOnly : Middleware :=
     if host == "127.0.0.1" || host == "::1" || host == "localhost" then
       app req respond
     else
-      respond (.responseBuilder status403 [] "Forbidden: localhost only".toUTF8)
+      AppM.respond respond (.responseBuilder status403 [] "Forbidden: localhost only".toUTF8)
 
 end Network.Wai.Middleware

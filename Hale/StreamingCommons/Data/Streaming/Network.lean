@@ -48,7 +48,7 @@ def mkAppData (clientSock : Socket .connected) (addr : SockAddr) : AppData :=
   { appRead := recv clientSock 4096
   , appWrite := fun data => do let _ ← send clientSock data; pure ()
   , appSockAddr := addr
-  , appClose := close clientSock }
+  , appClose := do let _ ← close clientSock; pure () }
 
 /-- Run a TCP server: accept connections and handle each in a new task.
     $$\text{runTCPServer} : \text{UInt16} \to (\text{AppData} \to \text{IO}(\text{Unit})) \to \text{IO}(\text{Unit})$$ -/
@@ -62,6 +62,6 @@ def runTCPServer (port : UInt16) (handler : AppData → IO Unit) : IO Unit := do
         try handler appData catch _ => pure ()
         appData.appClose
   finally
-    close server
+    let _ ← close server
 
 end Data.Streaming.Network

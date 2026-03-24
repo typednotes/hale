@@ -57,7 +57,7 @@ def websocketsOr (opts : ConnectionOptions) (wsApp : ServerApp)
     (backup : Application) : Application :=
   fun req respond =>
     match websocketsApp opts wsApp req with
-    | some resp => respond resp
+    | some resp => AppM.respond respond resp
     | none => backup req respond
 
 end Network.Wai.Handler.WebSockets

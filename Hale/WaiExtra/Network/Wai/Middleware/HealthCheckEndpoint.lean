@@ -17,7 +17,7 @@ open Network.HTTP.Types
 def healthCheck (path : String := "/_health") : Middleware :=
   fun app req respond =>
     if req.rawPathInfo == path then
-      respond (.responseBuilder status200 [] ByteArray.empty)
+      AppM.respond respond (.responseBuilder status200 [] ByteArray.empty)
     else
       app req respond
 

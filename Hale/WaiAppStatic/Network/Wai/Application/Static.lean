@@ -64,43 +64,43 @@ private partial def tryIndices
     controlled by the `StaticSettings`.
     $$\text{staticApp} : \text{StaticSettings} \to \text{Application}$$ -/
 def staticApp (settings : StaticSettings) : Application :=
-  fun req respond => do
+  fun req respond =>
     -- Convert path segments to validated Pieces
     let piecesOpt := toPieces req.pathInfo
     match piecesOpt with
     | none =>
       -- Invalid path (contains dots or slashes in segments)
-      respond (.responseBuilder status403 [] "Forbidden".toUTF8)
+      AppM.respond respond (.responseBuilder status403 [] "Forbidden".toUTF8)
     | some pieces =>
-      let result ← settings.ssLookupFile pieces
-      match result with
-      | .lrFile file =>
-        let headers := cacheHeaders settings.ssMaxAge
-        respond (file.fileToResponse status200 headers)
-      | .lrFolder => do
-        if settings.ssRedirectToIndex then
-          let indexFile ← tryIndices settings.ssLookupFile pieces settings.ssIndices
-          match indexFile with
-          | some file =>
-            let headers := cacheHeaders settings.ssMaxAge
-            respond (file.fileToResponse status200 headers)
-          | none =>
-            match settings.ssListing with
-            | some listing =>
-              let resp ← listing pieces
-              respond resp
+      AppM.respondIO respond do
+        let result ← settings.ssLookupFile pieces
+        match result with
+        | .lrFile file =>
+          let headers := cacheHeaders settings.ssMaxAge
+          pure (file.fileToResponse status200 headers)
+        | .lrFolder => do
+          if settings.ssRedirectToIndex then
+            let indexFile ← tryIndices settings.ssLookupFile pieces settings.ssIndices
+            match indexFile with
+            | some file =>
+              let headers := cacheHeaders settings.ssMaxAge
+              pure (file.fileToResponse status200 headers)
             | none =>
-              respond (.responseBuilder status404 [] "Not Found".toUTF8)
-        else
-          respond (.responseBuilder status301
-            [(hLocation, req.rawPathInfo ++ "/")]
-            ByteArray.empty)
-      | .lrNotFound =>
-        respond (.responseBuilder status404 [] "Not Found".toUTF8)
-      | .lrRedirect newPieces =>
-        let newPath := "/" ++ "/".intercalate (newPieces.map toString)
-        respond (.responseBuilder status301
-          [(hLocation, newPath)] ByteArray.empty)
+              match settings.ssListing with
+              | some listing =>
+                listing pieces
+              | none =>
+                pure (.responseBuilder status404 [] "Not Found".toUTF8)
+          else
+            pure (.responseBuilder status301
+              [(hLocation, req.rawPathInfo ++ "/")]
+              ByteArray.empty)
+        | .lrNotFound =>
+          pure (.responseBuilder status404 [] "Not Found".toUTF8)
+        | .lrRedirect newPieces =>
+          let newPath := "/" ++ "/".intercalate (newPieces.map toString)
+          pure (.responseBuilder status301
+            [(hLocation, newPath)] ByteArray.empty)
 
 /-- Convenience: serve files from a filesystem directory.
     Equivalent to `staticApp (defaultFileServerSettings root)`.

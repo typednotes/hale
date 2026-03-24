@@ -118,12 +118,21 @@ Implemented
 
 ## Typing Philosophy
 
-Types encode not just data shapes but guarantees:
+Lean 4 is a dependently-typed proof assistant that compiles to efficient native
+code. Hale leverages this to turn protocol specs, resource lifecycles, and
+algebraic laws into **compile-time obligations** -- verified by the kernel,
+then **erased at runtime** (zero overhead).
 
-- **Correctness proofs:** Typeclass laws are stated and proved (e.g., `bimap_id`, `bind_assoc`)
-- **Structural invariants:** `Ratio` carries `den_pos` and `coprime` proofs; `NonEmpty.length` returns `{n // n ≥ 1}`
-- **Precision guarantees:** `Fixed.add_exact` proves fixed-point addition is lossless
-- **Uniqueness:** `Void.eq_absurd` proves all functions from `Void` are equal
+- **Phantom state machines:** `Socket (state : SocketState)` makes it a type
+  error to `send` on an unconnected socket or `close` an already-closed one
+  (proof obligation: `state ≠ .closed`, discharged by `decide`)
+- **Indexed monads:** `AppM .pending .sent ResponseReceived` enforces that
+  a WAI application calls `respond` exactly once -- double-respond is a
+  compile-time error, not a runtime crash
+- **Proof-carrying structures:** `Ratio` carries `den_pos` and `coprime`
+  proofs; `Settings` carries `timeout_pos` -- all erased at runtime (zero cost)
+- **Algebraic laws:** 230+ theorems (`bimap_id`, `bind_assoc`, `map_id`,
+  `connAction_http11_default`, ...) verified by the Lean kernel
 
 ## Documentation
 

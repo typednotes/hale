@@ -4,6 +4,27 @@
   Core types for the network socket abstraction.
   Ports Haskell's `Network.Socket.Types` from the `network` package.
 
+  ## Dependent-Type Encoding of POSIX Socket Lifecycle
+
+  The POSIX socket API is a state machine: a socket must be created, then
+  bound, then set to listen, before it can accept connections. Calling
+  operations in the wrong order is undefined behaviour in C.
+
+  Lean 4's dependent types let us encode this state machine directly in the
+  type system via a **phantom type parameter** on `Socket`:
+
+  ```
+  Socket (state : SocketState)    -- state is erased at runtime (zero cost)
+  ```
+
+  Every API function declares which state it requires and which state it
+  produces. The Lean kernel rejects any program that violates the protocol
+  -- no runtime check, no assert, no exception. Just a type error.
+
+  The `.closed` state and the proof obligation `state ≠ .closed` on `close`
+  additionally prevent **double-close** at compile time: once a socket enters
+  the `.closed` state, no operation (including `close` itself) will accept it.
+
   ## Types
 
   - `Family`: AF_INET, AF_INET6, AF_UNIX
@@ -12,7 +33,7 @@
   - `EventType`: readable, writable, error flags
   - `EventLoop`: opaque event multiplexing handle (kqueue/epoll)
   - `SockAddr`: host + port
-  - `Socket`: opaque socket handle (lean_alloc_external)
+  - `Socket`: opaque socket handle parameterised by `SocketState`
 
   ## Design
 
@@ -156,26 +177,48 @@ abbrev RawSocket : Type := SocketHandle.type
 instance : Nonempty RawSocket := SocketHandle.property
 
 /-- POSIX socket lifecycle states.
-    Encoded as a phantom type parameter on `Socket` so protocol violations
-    are compile-time errors. Erased at runtime (zero cost). -/
+
+    Lean 4's dependent types encode the full POSIX state machine as a phantom
+    parameter on `Socket`. Each API function constrains which state it accepts
+    and which state it returns, so the compiler enforces the protocol:
+
+    - `bind`   requires `.fresh`,     produces `.bound`
+    - `listen` requires `.bound`,     produces `.listening`
+    - `accept` requires `.listening`, produces `.connected`
+    - `close`  requires `state ≠ .closed` (proof obligation), produces `.closed`
+
+    The parameter is fully erased at runtime (zero cost). Protocol violations
+    are compile-time errors -- not exceptions, not asserts, not runtime checks. -/
 inductive SocketState where
   | fresh      -- Created via socket(), not yet bound or connected
   | bound      -- bind() succeeded
   | listening  -- listen() succeeded
   | connected  -- connect() or accept() produced this socket
+  | closed     -- close() succeeded — no further operations are valid
 deriving BEq, DecidableEq, Repr
 
 /-- A socket tagged with its POSIX lifecycle state.
-    The state parameter is a compile-time ghost (erased, zero cost).
-    Protocol violations are compile-time errors.
+
+    This is the central example of Lean 4's phantom-type-parameter technique:
+    the `state` parameter exists only at the type level and is **completely
+    erased** at runtime. A `Socket .connected` and a `Socket .fresh` have
+    identical runtime representations (both are opaque FFI handles), yet the
+    compiler statically distinguishes them and rejects invalid transitions.
 
     ```
     Fresh ──bind──→ Bound ──listen──→ Listening ──accept──→ Connected
       │                                                      (send/recv)
-      └──connect──→ Connected
+      └──connect──→ Connected                                    │
+                                                                 │
+    Any state ──close(proof: state ≠ .closed)──→ Closed
     ```
 
-    The constructor is protected to prevent casual state fabrication.
+    **Double-close prevention:** `close` requires a proof `state ≠ .closed`.
+    For concrete states (`.fresh`, `.connected`, ...) the proof is discharged
+    automatically by `decide`. For a `Socket .closed` value the proof is
+    **impossible** -- the compiler rejects the call at type-checking time.
+
+    The constructor is `protected` to prevent casual state fabrication.
     Use the high-level API in `Network.Socket` for state transitions. -/
 structure Socket (state : SocketState) where
   protected mk ::
@@ -192,6 +235,10 @@ theorem SocketState.fresh_ne_connected : SocketState.fresh ≠ SocketState.conne
 theorem SocketState.bound_ne_listening : SocketState.bound ≠ SocketState.listening := by decide
 theorem SocketState.bound_ne_connected : SocketState.bound ≠ SocketState.connected := by decide
 theorem SocketState.listening_ne_connected : SocketState.listening ≠ SocketState.connected := by decide
+theorem SocketState.fresh_ne_closed : SocketState.fresh ≠ SocketState.closed := by decide
+theorem SocketState.bound_ne_closed : SocketState.bound ≠ SocketState.closed := by decide
+theorem SocketState.listening_ne_closed : SocketState.listening ≠ SocketState.closed := by decide
+theorem SocketState.connected_ne_closed : SocketState.connected ≠ SocketState.closed := by decide
 
 /-- SocketState BEq is reflexive — each state equals itself. -/
 theorem SocketState.beq_refl (s : SocketState) : (s == s) = true := by

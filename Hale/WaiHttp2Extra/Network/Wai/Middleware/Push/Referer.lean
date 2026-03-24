@@ -39,15 +39,17 @@ open Referer
     $$\text{pushOnReferer} : \text{PushSettings} \to \text{IO Middleware}$$ -/
 def pushOnReferer (settings : PushSettings := {}) : IO Middleware := do
   let mgr ← PushManager.new settings
-  return fun app req respond => do
+  return fun app req respond =>
+    AppM.ioThen (do
+      let path := req.rawPathInfo
+      -- Record this resource if it has a Referer from the same host
+      if let some referer := req.requestHeaderReferer then
+        let refPath := extractPath referer
+        if isStaticResource path && refPath != path then
+          mgr.record refPath path
+      -- Look up pushable resources for this page
+      mgr.getPushes path) fun pushes =>
     let path := req.rawPathInfo
-    -- Record this resource if it has a Referer from the same host
-    if let some referer := req.requestHeaderReferer then
-      let refPath := extractPath referer
-      if isStaticResource path && refPath != path then
-        mgr.record refPath path
-    -- Look up pushable resources for this page
-    let pushes ← mgr.getPushes path
     if pushes.isEmpty then
       app req respond
     else

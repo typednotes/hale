@@ -14,7 +14,7 @@
   import Hale.Warp
 
   def myApp : Network.Wai.Application := fun req respond =>
-    respond (Network.Wai.responseLBS Network.HTTP.Types.status200 [] "Hello!")
+    AppM.respond respond (Network.Wai.responseLBS Network.HTTP.Types.status200 [] "Hello!")
 
   def main : IO Unit :=
     Network.Wai.Handler.Warp.run 3000 myApp

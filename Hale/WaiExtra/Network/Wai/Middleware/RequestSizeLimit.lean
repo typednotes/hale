@@ -21,17 +21,17 @@ open Network.HTTP.Types
     $$\text{requestSizeLimit} : \mathbb{N} \to \text{Middleware}$$
     Returns 413 Payload Too Large if the limit is exceeded. -/
 def requestSizeLimit (maxBytes : Nat) : Middleware :=
-  fun app req respond => do
+  fun app req respond =>
     -- Fast path: check Content-Length header
     match req.requestBodyLength with
     | .knownLength n =>
       if n > maxBytes then
-        respond (.responseBuilder status413 [] "Request body too large".toUTF8)
+        AppM.respond respond (.responseBuilder status413 [] "Request body too large".toUTF8)
       else
         app req respond
     | .chunkedBody =>
       -- Wrap the body reader with a size-tracking reader
-      let consumed ← IO.mkRef 0
+      AppM.ioThen (IO.mkRef 0) fun consumed =>
       let wrappedBody : IO ByteArray := do
         let chunk ← req.requestBody
         if chunk.isEmpty then return chunk

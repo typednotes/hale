@@ -15,12 +15,16 @@
   For `.responseStream`: sends status + headers with chunked transfer encoding,
   then invokes the streaming body callback.
 
-  ## Guarantees
+  ## Dependent-Type Guarantees
 
-  - `sendResponse` returns `ResponseReceived`, ensuring exactly one response is sent
-  - Auto-added headers (`Date`, `Server`, `Content-Length`, `Transfer-Encoding`)
-    do not overwrite user-provided headers
-  - Requires a connected socket (compile-time)
+  - **Connected socket required:** `sendResponse` takes `Socket .connected`,
+    enforced by Lean 4's phantom type parameter. Passing a listening or
+    fresh socket is a compile-time error.
+  - **ResponseReceived token:** `sendResponse` returns `ResponseReceived`,
+    the opaque token that the `AppM` indexed monad requires the application
+    to produce. This token is the server's end of the exactly-once contract.
+  - **Header preservation proven:** `addAutoHeaders_length_ge` proves that
+    auto-added headers never remove user-provided headers (monotonicity).
 -/
 
 import Hale.WAI

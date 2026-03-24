@@ -17,7 +17,7 @@ def forceDomain (checkDomain : String → Option String) : Middleware :=
     | some newHost =>
       let scheme := if req.isSecure then "https://" else "http://"
       let url := scheme ++ newHost ++ req.rawPathInfo ++ req.rawQueryString
-      respond (.responseBuilder status301 [(hLocation, url)] ByteArray.empty)
+      AppM.respond respond (.responseBuilder status301 [(hLocation, url)] ByteArray.empty)
     | none => app req respond
 
 end Network.Wai.Middleware

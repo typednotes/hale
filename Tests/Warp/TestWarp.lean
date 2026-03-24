@@ -194,7 +194,7 @@ def loopbackTest : IO (List TestResult) := do
   let port : UInt16 := 18923  -- Use a high port unlikely to conflict
   let startedRef ← IO.mkRef false
   let app : Application := fun _req respond =>
-    respond (responseLBS status200 [(Data.CI.mk' "X-Test", "yes")] "Hello Warp!")
+    AppM.respond respond (responseLBS status200 [(Data.CI.mk' "X-Test", "yes")] "Hello Warp!")
 
   -- Start server in background task
   let serverTask ← IO.asTask (prio := .dedicated) do
@@ -243,7 +243,7 @@ def loopbackTest : IO (List TestResult) := do
         check "loopback: response contains X-Test header" (strContains respStr "X-Test: yes")
       ]
     finally
-      Network.Socket.close clientSock
+      let _ ← Network.Socket.close clientSock
   catch e =>
     results := [check "loopback: connection" false s!"exception: {e}"]
 

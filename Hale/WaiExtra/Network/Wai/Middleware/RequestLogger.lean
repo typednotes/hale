@@ -52,7 +52,7 @@ private def formatDev (req : Request) (status : Status) : String :=
     $$\text{logRequests} : \text{RequestLoggerSettings} \to \text{IO Middleware}$$ -/
 def logRequests (settings : RequestLoggerSettings := {}) : IO Middleware := do
   let logger ← System.Log.FastLogger.newLoggerSet settings.destination
-  return fun app req respond => do
+  return fun app req respond =>
     app req fun resp => do
       let fmt := match settings.outputFormat with
         | .apache => formatApache req resp.status

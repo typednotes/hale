@@ -9,10 +9,11 @@ import Hale
 
 open Network.Wai Network.HTTP.Types
 
-def echoApp : Application := fun req respond => do
-  let body ← req.requestBody
-  respond (responseLBS status200 [(hContentType, "text/plain")]
-    (String.fromUTF8! body))
+def echoApp : Application := fun req respond =>
+  AppM.respondIO respond do
+    let body ← req.requestBody
+    pure (responseLBS status200 [(hContentType, "text/plain")]
+      (String.fromUTF8! body))
 
 def main : IO Unit := do
   IO.println "Echo server listening on http://0.0.0.0:3000"
