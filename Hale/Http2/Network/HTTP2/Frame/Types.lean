@@ -24,13 +24,17 @@
 
 namespace Network.HTTP2
 
-/-- Axiom-dependent property: `(a &&& 0x7FFFFFFF).toNat < 2^31`.
+/-- `(a &&& 0x7FFFFFFF).toNat < 2^31`.
     Bitwise AND with `0x7FFFFFFF` clears bit 31, so the result is always `< 2^31`.
-    Lean's `omega` cannot reason about UInt32 bitwise operations, so this is
-    marked `sorry`. The invariant holds by the semantics of bitwise AND. -/
+    Proved via `BitVec.toNat_and` and `Nat.and_le_right`. -/
 private theorem UInt32.land_mask31_lt (a : UInt32) :
     (a &&& 0x7FFFFFFF).toNat < 2^31 := by
-  sorry
+  show (a &&& 0x7FFFFFFF).toBitVec.toNat < 2^31
+  rw [show (a &&& 0x7FFFFFFF).toBitVec = a.toBitVec &&& (0x7FFFFFFF : UInt32).toBitVec from rfl]
+  rw [BitVec.toNat_and]
+  have h := @Nat.and_le_right a.toBitVec.toNat (0x7FFFFFFF : UInt32).toBitVec.toNat
+  have : (0x7FFFFFFF : UInt32).toBitVec.toNat = 2147483647 := by native_decide
+  omega
 
 /-- HTTP/2 stream identifier. RFC 9113 §4.1 reserves the high bit.
     The proof field ensures only 31-bit values are representable.

@@ -50,8 +50,9 @@ instance : Ix Nat where
   index bounds i :=
     let (lo, hi) := bounds
     if h : i >= lo && i <= hi then
-      -- TODO: prove index < rangeSize for Nat instance
-      some ⟨i - lo, by sorry⟩
+      some ⟨i - lo, by
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+        simp only [Ix.rangeSize]; split <;> omega⟩
     else none
   inRange bounds i :=
     let (lo, hi) := bounds
@@ -72,8 +73,9 @@ instance : Ix Int where
   index bounds i :=
     let (lo, hi) := bounds
     if h : i >= lo && i <= hi then
-      -- TODO: prove index < rangeSize for Int instance
-      some ⟨(i - lo).toNat, by sorry⟩
+      some ⟨(i - lo).toNat, by
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+        simp only [Ix.rangeSize]; split <;> omega⟩
     else none
   inRange bounds i :=
     let (lo, hi) := bounds
@@ -92,8 +94,9 @@ instance : Ix Char where
   index bounds c :=
     let (lo, hi) := bounds
     if h : c.toNat >= lo.toNat && c.toNat <= hi.toNat then
-      -- TODO: prove index < rangeSize for Char instance
-      some ⟨c.toNat - lo.toNat, by sorry⟩
+      some ⟨c.toNat - lo.toNat, by
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+        simp only [Ix.rangeSize]; split <;> omega⟩
     else none
   inRange bounds c :=
     let (lo, hi) := bounds
@@ -124,8 +127,9 @@ instance : Ix Bool where
     let (lo, hi) := bounds
     if h : boolToNat b >= boolToNat lo && boolToNat b <= boolToNat hi then
       some ⟨boolToNat b - boolToNat lo, by
-        -- TODO: prove index < rangeSize for Bool instance
-        sorry⟩
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+        simp only [Ix.rangeSize]
+        cases lo <;> cases hi <;> cases b <;> simp_all [boolToNat]⟩
     else none
   inRange bounds b :=
     let (lo, hi) := bounds
@@ -149,8 +153,13 @@ instance [Ix α] [Ix β] : Ix (α × β) where
     | some ia, some ib =>
       let bSize := Ix.rangeSize (loB, hiB)
       some ⟨ia.val * bSize + ib.val, by
-        -- TODO: prove ia * bSize + ib < rangeSize for Product instance
-        sorry⟩
+        show ia.val * bSize + ib.val < Ix.rangeSize (loA, hiA) * Ix.rangeSize (loB, hiB)
+        have hia := ia.2; have hib := ib.2
+        have h1 : ia.val * bSize + ib.val < (ia.val + 1) * bSize := by
+          rw [Nat.add_mul]; omega
+        have h2 : (ia.val + 1) * bSize ≤ Ix.rangeSize (loA, hiA) * bSize :=
+          Nat.mul_le_mul_right bSize (by omega)
+        exact Nat.lt_of_lt_of_le h1 h2⟩
     | _, _ => none
   inRange bounds pair :=
     let ((loA, loB), (hiA, hiB)) := bounds

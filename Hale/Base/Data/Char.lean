@@ -129,9 +129,10 @@ theorem isAscii_bound (c : Char) (h : isAscii c = true) : c.toNat < 128 := by
 /-- Roundtrip: `digitToInt (intToDigit n) = some ⟨n, h⟩` for all `n < 16`. -/
 theorem digitToInt_intToDigit (n : Nat) (h : n < 16) :
     digitToInt (intToDigit n h) = some ⟨n, h⟩ := by
-  -- TODO: prove by exhaustive case analysis on n ∈ [0, 15]
-  -- Requires unfolding Char.ofNat / Char.toNat which involve isValidChar checks
-  sorry
+  have : n = 0 ∨ n = 1 ∨ n = 2 ∨ n = 3 ∨ n = 4 ∨ n = 5 ∨ n = 6 ∨ n = 7 ∨
+         n = 8 ∨ n = 9 ∨ n = 10 ∨ n = 11 ∨ n = 12 ∨ n = 13 ∨ n = 14 ∨ n = 15 := by omega
+  rcases this with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
 
 /-- `isAscii` is true iff the code point is below 128. -/
 theorem isAscii_iff (c : Char) : isAscii c = true ↔ c.toNat < 128 := by
@@ -143,8 +144,10 @@ theorem isHexDigit_of_digit (c : Char) (h : c.isDigit = true) : isHexDigit c = t
 
 /-- `intToDigit` always produces an ASCII character. -/
 theorem intToDigit_isAscii (n : Nat) (h : n < 16) : isAscii (intToDigit n h) = true := by
-  -- TODO: prove by exhaustive case analysis
-  sorry
+  have : n = 0 ∨ n = 1 ∨ n = 2 ∨ n = 3 ∨ n = 4 ∨ n = 5 ∨ n = 6 ∨ n = 7 ∨
+         n = 8 ∨ n = 9 ∨ n = 10 ∨ n = 11 ∨ n = 12 ∨ n = 13 ∨ n = 14 ∨ n = 15 := by omega
+  rcases this with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
 
 end Char'
 end Data

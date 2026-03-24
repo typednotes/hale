@@ -65,10 +65,18 @@ class FiniteBits (α : Type u) extends Bits α where
 
 -- ── Helpers using UInt64 as common representation ──
 
-/-- Pop count for a UInt64 value using a range fold. -/
-private def popCountU64 (x : UInt64) : Nat :=
-  (List.range 64).foldl (fun acc i =>
-    acc + if ((x >>> i.toUInt64) &&& 1) != 0 then 1 else 0) 0
+/-- Pop count for the low `n` bits of a UInt64 value (recursive for provability). -/
+private def popCountN (x : UInt64) : Nat → Nat
+  | 0 => 0
+  | n + 1 => popCountN x n + if ((x >>> n.toUInt64) &&& 1) != 0 then 1 else 0
+
+private theorem popCountN_le (x : UInt64) (n : Nat) : popCountN x n ≤ n := by
+  induction n with
+  | zero => simp [popCountN]
+  | succ k ih => unfold popCountN; split <;> omega
+
+/-- Pop count for all 64 bits of a UInt64 value. -/
+private def popCountU64 (x : UInt64) : Nat := popCountN x 64
 
 /-- Count leading zeros for a value with given bit size. -/
 private def clzU64 (x : UInt64) (size : Nat) : Nat :=
@@ -79,13 +87,30 @@ private def clzU64 (x : UInt64) (size : Nat) : Nat :=
       else go i
   go size
 
-/-- Count trailing zeros for a value with given bit size. -/
-private def ctzU64 (x : UInt64) (size : Nat) : Nat :=
-  (List.range size).foldl (fun acc i =>
-    match acc with
-    | some v => some v
-    | none => if ((x >>> i.toUInt64) &&& 1) != 0 then some i else none) none
-  |>.getD size
+private theorem clzU64_go_le (x : UInt64) (size : Nat) :
+    ∀ n, clzU64.go x size n ≤ size := by
+  intro n; induction n with
+  | zero => simp [clzU64.go]
+  | succ k ih => unfold clzU64.go; split <;> omega
+
+private theorem clzU64_le (x : UInt64) (size : Nat) : clzU64 x size ≤ size :=
+  clzU64_go_le x size size
+
+/-- Count trailing zeros for a value with given bit size (recursive for provability). -/
+private def ctzRec (x : UInt64) (size i : Nat) : Nat :=
+  if i >= size then size
+  else if ((x >>> i.toUInt64) &&& 1) != 0 then i
+  else ctzRec x size (i + 1)
+termination_by size - i
+
+private theorem ctzRec_le (x : UInt64) (size i : Nat) : ctzRec x size i ≤ size := by
+  unfold ctzRec
+  split
+  · omega
+  · split
+    · omega
+    · exact ctzRec_le x size (i + 1)
+termination_by size - i
 
 -- ── UInt8 instance ──────────────────────────────
 
@@ -98,15 +123,15 @@ instance : Bits UInt8 where
   shiftR a n := a >>> n.toUInt8
   testBit a n := ((a >>> n.toUInt8) &&& 1) != 0
   bit n := 1 <<< n.toUInt8
-  popCount a := popCountU64 a.toUInt64
+  popCount a := popCountN a.toUInt64 8
   zeroBits := 0
   bitSizeMaybe := some 8
 
 instance : FiniteBits UInt8 where
   finiteBitSize := 8
-  popCountBounded a := ⟨popCountU64 a.toUInt64, by sorry⟩ -- TODO: prove popCount ≤ 8 for UInt8
-  countLeadingZeros a := ⟨clzU64 a.toUInt64 8, by sorry⟩ -- TODO: prove clz ≤ 8
-  countTrailingZeros a := ⟨ctzU64 a.toUInt64 8, by sorry⟩ -- TODO: prove ctz ≤ 8
+  popCountBounded a := ⟨popCountN a.toUInt64 8, popCountN_le a.toUInt64 8⟩
+  countLeadingZeros a := ⟨clzU64 a.toUInt64 8, clzU64_le a.toUInt64 8⟩
+  countTrailingZeros a := ⟨ctzRec a.toUInt64 8 0, ctzRec_le a.toUInt64 8 0⟩
 
 -- ── UInt16 instance ─────────────────────────────
 
@@ -119,15 +144,15 @@ instance : Bits UInt16 where
   shiftR a n := a >>> n.toUInt16
   testBit a n := ((a >>> n.toUInt16) &&& 1) != 0
   bit n := 1 <<< n.toUInt16
-  popCount a := popCountU64 a.toUInt64
+  popCount a := popCountN a.toUInt64 16
   zeroBits := 0
   bitSizeMaybe := some 16
 
 instance : FiniteBits UInt16 where
   finiteBitSize := 16
-  popCountBounded a := ⟨popCountU64 a.toUInt64, by sorry⟩ -- TODO: prove popCount ≤ 16 for UInt16
-  countLeadingZeros a := ⟨clzU64 a.toUInt64 16, by sorry⟩ -- TODO: prove clz ≤ 16
-  countTrailingZeros a := ⟨ctzU64 a.toUInt64 16, by sorry⟩ -- TODO: prove ctz ≤ 16
+  popCountBounded a := ⟨popCountN a.toUInt64 16, popCountN_le a.toUInt64 16⟩
+  countLeadingZeros a := ⟨clzU64 a.toUInt64 16, clzU64_le a.toUInt64 16⟩
+  countTrailingZeros a := ⟨ctzRec a.toUInt64 16 0, ctzRec_le a.toUInt64 16 0⟩
 
 -- ── UInt32 instance ─────────────────────────────
 
@@ -140,15 +165,15 @@ instance : Bits UInt32 where
   shiftR a n := a >>> n.toUInt32
   testBit a n := ((a >>> n.toUInt32) &&& 1) != 0
   bit n := 1 <<< n.toUInt32
-  popCount a := popCountU64 a.toUInt64
+  popCount a := popCountN a.toUInt64 32
   zeroBits := 0
   bitSizeMaybe := some 32
 
 instance : FiniteBits UInt32 where
   finiteBitSize := 32
-  popCountBounded a := ⟨popCountU64 a.toUInt64, by sorry⟩ -- TODO: prove popCount ≤ 32 for UInt32
-  countLeadingZeros a := ⟨clzU64 a.toUInt64 32, by sorry⟩ -- TODO: prove clz ≤ 32
-  countTrailingZeros a := ⟨ctzU64 a.toUInt64 32, by sorry⟩ -- TODO: prove ctz ≤ 32
+  popCountBounded a := ⟨popCountN a.toUInt64 32, popCountN_le a.toUInt64 32⟩
+  countLeadingZeros a := ⟨clzU64 a.toUInt64 32, clzU64_le a.toUInt64 32⟩
+  countTrailingZeros a := ⟨ctzRec a.toUInt64 32 0, ctzRec_le a.toUInt64 32 0⟩
 
 -- ── UInt64 instance ─────────────────────────────
 
@@ -167,9 +192,9 @@ instance : Bits UInt64 where
 
 instance : FiniteBits UInt64 where
   finiteBitSize := 64
-  popCountBounded a := ⟨popCountU64 a, by sorry⟩ -- TODO: prove popCount ≤ 64 for UInt64
-  countLeadingZeros a := ⟨clzU64 a 64, by sorry⟩ -- TODO: prove clz ≤ 64
-  countTrailingZeros a := ⟨ctzU64 a 64, by sorry⟩ -- TODO: prove ctz ≤ 64
+  popCountBounded a := ⟨popCountU64 a, popCountN_le a 64⟩
+  countLeadingZeros a := ⟨clzU64 a 64, clzU64_le a 64⟩
+  countTrailingZeros a := ⟨ctzRec a 64 0, ctzRec_le a 64 0⟩
 
 -- ── Derived operations ──────────────────────────
 
