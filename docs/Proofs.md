@@ -2,7 +2,7 @@
 
 > All theorems link to their source modules in the [API Reference](../Hale.html).
 
-**Total: 230 compile-time verified theorems across 52 files**
+**Total: 257 compile-time verified theorems across 52 files**
 
 All theorems are checked by the Lean 4 kernel at compile time. No `sorry`
 in production code (one `sorry` exists in `unsafeToPiece` for trusted-input

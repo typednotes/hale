@@ -7,6 +7,13 @@ package hale where
 require «doc-gen4» from git
   "https://github.com/leanprover/doc-gen4" @ "main"
 
+/-- Query `pkg-config` for the given package and flag mode. Returns an empty array on failure. -/
+private def pkgConfig (pkg : String) (mode : String) : IO (Array String) := do
+  let out ← IO.Process.output { cmd := "pkg-config", args := #[mode, pkg] }
+  if out.exitCode == 0 then
+    return out.stdout.trimAscii.toString.splitOn " " |>.filter (· != "") |>.toArray
+  return #[]
+
 /-- Compile ffi/network.c into an object file. -/
 target network.o pkg : FilePath := do
   let oFile := pkg.buildDir / "ffi" / "network.o"
@@ -18,11 +25,8 @@ target network.o pkg : FilePath := do
 target tls.o pkg : FilePath := do
   let oFile := pkg.buildDir / "ffi" / "tls.o"
   let srcJob ← inputTextFile <| pkg.dir / "ffi" / "tls.c"
-  -- OpenSSL headers: try homebrew paths on macOS, system paths on Linux
-  let weakArgs := #["-I", (← getLeanIncludeDir).toString,
-    "-I/opt/homebrew/opt/openssl/include",
-    "-I/usr/local/opt/openssl/include",
-    "-I/usr/include/openssl"]
+  let sslCflags ← pkgConfig "openssl" "--cflags"
+  let weakArgs := #["-I", (← getLeanIncludeDir).toString] ++ sslCflags
   buildO oFile srcJob weakArgs (traceArgs := #["-O2", "-fPIC"]) (extraDepTrace := getLeanTrace)
 
 /-- Bundle the FFI objects into a static library that Lake links automatically. -/
@@ -34,8 +38,7 @@ extern_lib haleffi pkg := do
 @[default_target]
 lean_lib Hale where
   needs := #[haleffi]
-  moreLinkArgs := #["-L/opt/homebrew/opt/openssl/lib", "-L/usr/local/opt/openssl/lib",
-    "-lssl", "-lcrypto"]
+  moreLinkArgs := run_io (pkgConfig "openssl" "--libs")
 
 lean_exe hale where
   root := `Main

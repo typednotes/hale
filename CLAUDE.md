@@ -454,7 +454,10 @@ Hale/
 ## Build & Test
 
 ```bash
-# Build the library
+# Nix users: enter shell with OpenSSL + pkg-config
+nix-shell
+
+# Build the library (requires pkg-config openssl)
 lake build
 
 # Run smoke tests

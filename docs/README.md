@@ -171,6 +171,6 @@ Proof fields are zero-cost (erased), so there is never a reason to create
 | AutoUpdate | — | [API](../Hale/AutoUpdate.html) | — | Periodic cached values |
 | TimeManager | — | [API](../Hale/TimeManager.html) | — | Connection timeout management |
 
-## Proven Properties (230+ theorems)
+## Proven Properties (257 theorems)
 
 See [Proofs.md](Proofs.md) for a complete catalog of all theorems.
