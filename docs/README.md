@@ -136,21 +136,21 @@ Proof fields are zero-cost (erased), so there is never a reason to create
 ### Core Infrastructure
 | Package | Guide | API | Theorems | Description |
 |---------|-------|-----|----------|-------------|
-| Base | [Guide](Base/README.md) | [API](../Hale/Base.html) | 88 | Foundational types, functors, monads |
-| ByteString | [Guide](ByteString/README.md) | [API](../Hale/ByteString.html) | 7 | Byte array operations |
+| Base | [Guide](Base/) | [API](../Hale/Base.html) | 88 | Foundational types, functors, monads |
+| ByteString | [Guide](ByteString/) | [API](../Hale/ByteString.html) | 7 | Byte array operations |
 | Network | — | [API](../Hale/Network.html) | 7 | POSIX sockets with phantom state |
 | HttpTypes | — | [API](../Hale/HttpTypes.html) | 42 | HTTP methods, status, headers, URI |
 
 ### Web Application Interface
 | Package | Guide | API | Theorems | Description |
 |---------|-------|-----|----------|-------------|
-| WAI | [Guide](WAI/README.md) | [API](../Hale/WAI.html) | 17 | Request/Response/Application/Middleware |
-| Warp | [Guide](Warp/README.md) | [API](../Hale/Warp.html) | 11 | HTTP/1.x server (156k QPS) |
-| WarpTLS | [Guide](TLS/README.md) | [API](../Hale/WarpTLS.html) | — | HTTPS via OpenSSL FFI |
+| WAI | [Guide](WAI/) | [API](../Hale/WAI.html) | 17 | Request/Response/Application/Middleware |
+| Warp | [Guide](Warp/) | [API](../Hale/Warp.html) | 11 | HTTP/1.x server (156k QPS) |
+| WarpTLS | [Guide](TLS/) | [API](../Hale/WarpTLS.html) | — | HTTPS via OpenSSL FFI |
 | WarpQUIC | — | [API](../Hale/WarpQUIC.html) | — | HTTP/3 over QUIC |
-| WaiExtra | [Guide](WaiExtra/README.md) | [API](../Hale/WaiExtra.html) | 11 | 36 middleware modules |
-| WaiAppStatic | [Guide](WaiAppStatic/README.md) | [API](../Hale/WaiAppStatic.html) | 4 | Static file serving |
-| WebSockets | [Guide](WebSockets/README.md) | [API](../Hale/WebSockets.html) | 6 | RFC 6455 protocol |
+| WaiExtra | [Guide](WaiExtra/) | [API](../Hale/WaiExtra.html) | 11 | 36 middleware modules |
+| WaiAppStatic | [Guide](WaiAppStatic/) | [API](../Hale/WaiAppStatic.html) | 4 | Static file serving |
+| WebSockets | [Guide](WebSockets/) | [API](../Hale/WebSockets.html) | 6 | RFC 6455 protocol |
 
 ### Protocol Implementations
 | Package | Guide | API | Theorems | Description |
@@ -158,7 +158,7 @@ Proof fields are zero-cost (erased), so there is never a reason to create
 | Http2 | — | [API](../Hale/Http2.html) | 10 | HTTP/2 framing (RFC 9113) |
 | Http3 | — | [API](../Hale/Http3.html) | 24 | HTTP/3 framing + QPACK |
 | QUIC | — | [API](../Hale/QUIC.html) | — | QUIC transport |
-| TLS | [Guide](TLS/README.md) | [API](../Hale/TLS.html) | — | OpenSSL FFI wrapper |
+| TLS | [Guide](TLS/) | [API](../Hale/TLS.html) | — | OpenSSL FFI wrapper |
 
 ### Utilities
 | Package | Guide | API | Theorems | Description |
@@ -166,7 +166,7 @@ Proof fields are zero-cost (erased), so there is never a reason to create
 | MimeTypes | — | [API](../Hale/MimeTypes.html) | — | MIME type lookup |
 | Cookie | — | [API](../Hale/Cookie.html) | — | HTTP cookie parsing |
 | Base64 | — | [API](../Hale/Base64.html) | — | RFC 4648 codec |
-| ResourceT | [Guide](ResourceT/README.md) | [API](../Hale/ResourceT.html) | 1 | Resource management monad |
+| ResourceT | [Guide](ResourceT/) | [API](../Hale/ResourceT.html) | 1 | Resource management monad |
 | FastLogger | — | [API](../Hale/FastLogger.html) | — | Buffered thread-safe logging |
 | AutoUpdate | — | [API](../Hale/AutoUpdate.html) | — | Periodic cached values |
 | TimeManager | — | [API](../Hale/TimeManager.html) | — | Connection timeout management |
