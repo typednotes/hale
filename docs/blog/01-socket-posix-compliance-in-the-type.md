@@ -23,13 +23,9 @@ at compile time so the generated code is identical to raw C**.
 
 ## The state machine
 
-```
-Fresh ──bind──→ Bound ──listen──→ Listening ──accept──→ Connected
-  │                                                      (send/recv)
-  └──connect──→ Connected                                    │
-                                                             │
-Any state ──close(proof: state ≠ .closed)──→ Closed
-```
+<p align="center">
+  <img src="socket-state-machine.svg" alt="Socket state machine: Fresh → Bound → Listening → Connected, with close from any state to Closed (proof: state ≠ .closed)" width="700">
+</p>
 
 Five states, seven transitions, and one proof obligation. That is the
 entire POSIX socket protocol. Let us encode it.
@@ -177,50 +173,11 @@ let _ ← close s
 
 ## Try it yourself
 
-Lean 4 runs in the browser via [live.lean-lang.org](https://live.lean-lang.org).
+**[Open this example in the Lean 4 Playground](https://live.lean-lang.org/#code=--%20Simplified%20version%20%28no%20FFI%2C%20just%20the%20type-level%20encoding%29%0Ainductive%20SocketState%20where%0A%20%20%7C%20fresh%20%7C%20bound%20%7C%20listening%20%7C%20connected%20%7C%20closed%0Aderiving%20DecidableEq%2C%20Repr%0A%0Astructure%20Socket%20%28state%20%3A%20SocketState%29%20where%0A%20%20id%20%3A%20Nat%0A%0Adef%20bind%20%28s%20%3A%20Socket%20.fresh%29%20%3A%20Socket%20.bound%20%3A%3D%20%E2%9F%A8s.id%E2%9F%A9%0Adef%20listen%20%28s%20%3A%20Socket%20.bound%29%20%3A%20Socket%20.listening%20%3A%3D%20%E2%9F%A8s.id%E2%9F%A9%0Adef%20accept%20%28s%20%3A%20Socket%20.listening%29%20%3A%20Socket%20.connected%20%3A%3D%20%E2%9F%A8s.id%E2%9F%A9%0Adef%20send%20%28s%20%3A%20Socket%20.connected%29%20%28msg%20%3A%20String%29%20%3A%20String%20%3A%3D%20msg%0Adef%20close%20%28s%20%3A%20Socket%20state%29%20%28_h%20%3A%20state%20%E2%89%A0%20.closed%20%3A%3D%20by%20decide%29%20%3A%20Socket%20.closed%20%3A%3D%20%E2%9F%A8s.id%E2%9F%A9%0A%0A--%20This%20type-checks%3A%0Adef%20good%20%3A%20String%20%3A%3D%0A%20%20let%20s%20%3A%20Socket%20.fresh%20%3A%3D%20%E2%9F%A842%E2%9F%A9%0A%20%20let%20s%20%3A%3D%20bind%20s%0A%20%20let%20s%20%3A%3D%20listen%20s%0A%20%20let%20s%20%3A%3D%20accept%20s%0A%20%20let%20msg%20%3A%3D%20send%20s%20%22hello%22%0A%20%20let%20_%20%3A%3D%20close%20s%0A%20%20msg%0A%0A--%20Uncomment%20to%20see%20the%20type%20error%20%28double%20close%29%3A%0A--%20def%20bad_double_close%20%3A%20Socket%20.closed%20%3A%3D%0A--%20%20%20let%20s%20%3A%20Socket%20.fresh%20%3A%3D%20%E2%9F%A842%E2%9F%A9%0A--%20%20%20let%20s%20%3A%3D%20close%20s%0A--%20%20%20close%20s%20%20%20--%20Error%3A%20.closed%20%E2%89%A0%20.closed%20is%20false%0A%0A--%20Uncomment%20to%20see%20the%20type%20error%20%28send%20on%20fresh%29%3A%0A--%20def%20bad_send_fresh%20%3A%20String%20%3A%3D%0A--%20%20%20let%20s%20%3A%20Socket%20.fresh%20%3A%3D%20%E2%9F%A842%E2%9F%A9%0A--%20%20%20send%20s%20%22hello%22%20%20%20--%20Error%3A%20expected%20.connected%2C%20got%20.fresh%0A)** — try uncommenting the failing examples to see the type errors live.
 
-Paste this into the editor and observe the red squiggles:
-
-```lean
--- Simplified version (no FFI, just the type-level encoding)
-inductive SocketState where
-  | fresh | bound | listening | connected | closed
-deriving DecidableEq, Repr
-
-structure Socket (state : SocketState) where
-  id : Nat
-
-def bind (s : Socket .fresh) : Socket .bound := ⟨s.id⟩
-def listen (s : Socket .bound) : Socket .listening := ⟨s.id⟩
-def accept (s : Socket .listening) : Socket .connected := ⟨s.id⟩
-def send (s : Socket .connected) (msg : String) : String := msg
-def close (s : Socket state) (_h : state ≠ .closed := by decide) : Socket .closed := ⟨s.id⟩
-
--- ✅ This type-checks:
-def good : String :=
-  let s : Socket .fresh := ⟨42⟩
-  let s := bind s
-  let s := listen s
-  let s := accept s
-  let msg := send s "hello"
-  let _ := close s
-  msg
-
--- ❌ Uncomment this — it will NOT type-check:
--- def bad_double_close : Socket .closed :=
---   let s : Socket .fresh := ⟨42⟩
---   let s := close s
---   close s   -- Error: .closed ≠ .closed is false
-
--- ❌ Uncomment this — it will NOT type-check:
--- def bad_send_fresh : String :=
---   let s : Socket .fresh := ⟨42⟩
---   send s "hello"   -- Error: expected .connected, got .fresh
-```
-
-Try uncommenting the failing examples. The error messages are immediate
-and precise — the kernel tells you exactly which state transition is
-invalid.
+Uncomment `bad_double_close` or
+`bad_send_fresh` and the kernel rejects the program immediately — the
+error messages tell you exactly which state transition is invalid.
 
 ## The punchline
 
