@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdatomic.h>
+#include <sched.h>
 
 /* Platform-specific event multiplexing headers */
 #ifdef __APPLE__
@@ -168,7 +169,10 @@ static inline hale_recvbuf_t *get_recvbuf(b_lean_obj_arg obj) {
     return (hale_recvbuf_t *)lean_get_external_data(obj);
 }
 
-/* Refill the buffer from the socket. Returns bytes read, 0 on EOF, -1 on error. */
+/* Refill the buffer from the socket. Returns bytes read, 0 on EOF, -1 on error.
+ * Handles EAGAIN gracefully: retries up to 3 times with brief yields.
+ * This allows the blocking RecvBuffer to work on non-blocking sockets
+ * (after a readability event, EAGAIN is transient). */
 static ssize_t recvbuf_fill(hale_recvbuf_t *rb) {
     /* Compact: move remaining bytes to front */
     if (rb->pos > 0 && rb->len > rb->pos) {
@@ -182,9 +186,18 @@ static ssize_t recvbuf_fill(hale_recvbuf_t *rb) {
     }
     size_t space = RECVBUF_SIZE - rb->len;
     if (space == 0) return 0;
-    ssize_t n = recv(rb->fd, rb->buf + rb->len, space, 0);
-    if (n > 0) rb->len += (size_t)n;
-    return n;
+    for (int retry = 0; retry < 4; retry++) {
+        ssize_t n = recv(rb->fd, rb->buf + rb->len, space, 0);
+        if (n >= 0) {
+            if (n > 0) rb->len += (size_t)n;
+            return n;
+        }
+        if (errno != EAGAIN && errno != EWOULDBLOCK) return -1;
+        /* EAGAIN: brief yield then retry */
+        if (retry < 3) sched_yield();
+    }
+    /* Still EAGAIN after retries — report as error */
+    return -1;
 }
 
 /**
@@ -852,6 +865,371 @@ LEAN_EXPORT lean_obj_res hale_getaddrinfo(lean_obj_arg node, lean_obj_arg servic
 
     freeaddrinfo(res);
     return lean_io_result_mk_ok(list);
+}
+
+/* ================================================================
+ * NON-BLOCKING SOCKET OPERATIONS
+ *
+ * Return tagged Lean inductive values instead of throwing on EAGAIN.
+ * Tag encoding matches the Lean inductive declaration order.
+ * ================================================================ */
+
+/* Helper: make a Lean IO.Error object from errno (without wrapping in IO result) */
+static inline lean_obj_res mk_io_error_obj(const char *msg) {
+    return lean_mk_io_user_error(lean_mk_string(msg));
+}
+
+static inline lean_obj_res mk_io_errno_error_obj(void) {
+    return mk_io_error_obj(strerror(errno));
+}
+
+/**
+ * Non-blocking accept.
+ * Returns AcceptOutcome:
+ *   tag 0 = .accepted (Socket .connected) SockAddr  — ctor(0, 2, 0)[socket, sockaddr]
+ *   tag 1 = .wouldBlock                             — ctor(1, 0, 0)
+ *   tag 2 = .error IO.Error                         — ctor(2, 1, 0)[err]
+ *
+ * SockAddr is a ctor(0, 2, sizeof(UInt16))[host, port]  (port is scalar)
+ */
+LEAN_EXPORT lean_obj_res hale_socket_accept_nb(b_lean_obj_arg sock) {
+    int fd = get_socket_fd(sock);
+    struct sockaddr_storage addr;
+    socklen_t addrlen = sizeof(addr);
+    int client = accept(fd, (struct sockaddr *)&addr, &addrlen);
+    if (client < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            /* tag 1 = wouldBlock */
+            return lean_io_result_mk_ok(lean_alloc_ctor(1, 0, 0));
+        }
+        /* tag 2 = error */
+        lean_obj_res err = mk_io_errno_error_obj();
+        lean_obj_res r = lean_alloc_ctor(2, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+    /* Set TCP_NODELAY on accepted socket (eliminates 40ms Nagle delay).
+     * Do NOT set O_NONBLOCK — the caller decides blocking mode. */
+    int one = 1;
+    setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+
+    /* Build SockAddr */
+    char ip[INET6_ADDRSTRLEN + 1];
+    uint16_t port = 0;
+    sockaddr_to_strings(&addr, ip, sizeof(ip), &port);
+    lean_obj_res sa = lean_alloc_ctor(0, 1, 2);  /* SockAddr: 1 obj field (host), 2 scalar bytes (UInt16) */
+    lean_ctor_set(sa, 0, lean_mk_string(ip));
+    lean_ctor_set_uint16(sa, sizeof(void*), port);
+
+    /* tag 0 = accepted socket sockaddr */
+    lean_obj_res r = lean_alloc_ctor(0, 2, 0);
+    lean_ctor_set(r, 0, mk_socket(client));
+    lean_ctor_set(r, 1, sa);
+    return lean_io_result_mk_ok(r);
+}
+
+/**
+ * Non-blocking connect. Sets O_NONBLOCK on the socket before connecting.
+ * Returns ConnectOutcome:
+ *   tag 0 = .connected (Socket .connected)    — ctor(0, 1, 0)[socket]
+ *   tag 1 = .inProgress (Socket .connecting)  — ctor(1, 1, 0)[socket]
+ *   tag 2 = .refused IO.Error                 — ctor(2, 1, 0)[err]
+ *
+ * Note: the Lean Socket type is a struct with a single RawSocket field.
+ * At the Lean level, the caller must reinterpret the raw socket with
+ * the appropriate phantom state.  The C layer returns the raw socket.
+ */
+LEAN_EXPORT lean_obj_res hale_socket_connect_nb(b_lean_obj_arg sock, lean_obj_arg host, uint16_t port) {
+    int fd = get_socket_fd(sock);
+    const char *h = lean_string_cstr(host);
+
+    /* Set non-blocking */
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags >= 0) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    struct sockaddr_storage ss;
+    socklen_t sslen;
+    int sock_domain = AF_UNSPEC;
+    {
+        struct sockaddr_storage tmp;
+        socklen_t tmplen = sizeof(tmp);
+        if (getsockname(fd, (struct sockaddr *)&tmp, &tmplen) == 0 && tmp.ss_family != 0) {
+            sock_domain = tmp.ss_family;
+        }
+    }
+
+    if (resolve_addr(h, port, sock_domain, &ss, &sslen) < 0) {
+        lean_obj_res err = mk_io_error_obj("connect: invalid address or hostname resolution failed");
+        lean_obj_res r = lean_alloc_ctor(2, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+
+    if (connect(fd, (struct sockaddr *)&ss, sslen) < 0) {
+        if (errno == EINPROGRESS) {
+            /* tag 1 = inProgress — return the raw socket handle */
+            lean_inc(sock);
+            lean_obj_res r = lean_alloc_ctor(1, 1, 0);
+            lean_ctor_set(r, 0, sock);
+            return lean_io_result_mk_ok(r);
+        }
+        lean_obj_res err = mk_io_errno_error_obj();
+        lean_obj_res r = lean_alloc_ctor(2, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+    /* Connected immediately */
+    lean_inc(sock);
+    lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+    lean_ctor_set(r, 0, sock);
+    return lean_io_result_mk_ok(r);
+}
+
+/**
+ * Check whether a non-blocking connect completed.
+ * Call after the event loop reports the socket is writable.
+ * Returns ConnectOutcome (same encoding as connect_nb).
+ */
+LEAN_EXPORT lean_obj_res hale_socket_connect_finish(b_lean_obj_arg sock) {
+    int fd = get_socket_fd(sock);
+    int err = 0;
+    socklen_t len = sizeof(err);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0) {
+        lean_obj_res e = mk_io_errno_error_obj();
+        lean_obj_res r = lean_alloc_ctor(2, 1, 0);
+        lean_ctor_set(r, 0, e);
+        return lean_io_result_mk_ok(r);
+    }
+    if (err != 0) {
+        lean_obj_res e = mk_io_error_obj(strerror(err));
+        lean_obj_res r = lean_alloc_ctor(2, 1, 0);
+        lean_ctor_set(r, 0, e);
+        return lean_io_result_mk_ok(r);
+    }
+    /* Connected */
+    lean_inc(sock);
+    lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+    lean_ctor_set(r, 0, sock);
+    return lean_io_result_mk_ok(r);
+}
+
+/**
+ * Non-blocking send.
+ * Returns SendOutcome:
+ *   tag 0 = .sent Nat              — ctor(0, 1, 0)[n]
+ *   tag 1 = .wouldBlock            — ctor(1, 0, 0)
+ *   tag 2 = .error IO.Error        — ctor(2, 1, 0)[err]
+ */
+LEAN_EXPORT lean_obj_res hale_socket_send_nb(b_lean_obj_arg sock, b_lean_obj_arg data) {
+    int fd = get_socket_fd(sock);
+    size_t len = lean_sarray_size(data);
+    const uint8_t *buf = lean_sarray_cptr(data);
+    ssize_t sent = send(fd, buf, len, MSG_DONTWAIT);
+    if (sent < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return lean_io_result_mk_ok(lean_alloc_ctor(1, 0, 0));
+        }
+        lean_obj_res err = mk_io_errno_error_obj();
+        lean_obj_res r = lean_alloc_ctor(2, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+    /* tag 0 = sent n */
+    lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+    lean_ctor_set(r, 0, lean_box((size_t)sent));
+    return lean_io_result_mk_ok(r);
+}
+
+/**
+ * Non-blocking recv.
+ * Returns RecvOutcome:
+ *   tag 0 = .data ByteArray        — ctor(0, 1, 0)[arr]
+ *   tag 1 = .wouldBlock            — ctor(1, 0, 0)
+ *   tag 2 = .eof                   — ctor(2, 0, 0)
+ *   tag 3 = .error IO.Error        — ctor(3, 1, 0)[err]
+ */
+LEAN_EXPORT lean_obj_res hale_socket_recv_nb(b_lean_obj_arg sock, size_t maxlen) {
+    int fd = get_socket_fd(sock);
+    uint8_t *buf = malloc(maxlen);
+    if (!buf) {
+        lean_obj_res err = mk_io_error_obj("recv: malloc failed");
+        lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+    ssize_t n = recv(fd, buf, maxlen, MSG_DONTWAIT);
+    if (n < 0) {
+        free(buf);
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return lean_io_result_mk_ok(lean_alloc_ctor(1, 0, 0));
+        }
+        lean_obj_res err = mk_io_errno_error_obj();
+        lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+    if (n == 0) {
+        free(buf);
+        /* tag 2 = eof */
+        return lean_io_result_mk_ok(lean_alloc_ctor(2, 0, 0));
+    }
+    /* tag 0 = data */
+    lean_object *arr = lean_alloc_sarray(1, (size_t)n, (size_t)n);
+    memcpy(lean_sarray_cptr(arr), buf, (size_t)n);
+    free(buf);
+    lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+    lean_ctor_set(r, 0, arr);
+    return lean_io_result_mk_ok(r);
+}
+
+/**
+ * Extract raw fd from a socket external object. For EventLoop correlation.
+ */
+LEAN_EXPORT lean_obj_res hale_socket_get_fd(b_lean_obj_arg sock) {
+    int fd = get_socket_fd(sock);
+    return lean_io_result_mk_ok(lean_box((size_t)(unsigned)fd));
+}
+
+/* ================================================================
+ * NON-BLOCKING RECVBUFFER
+ * ================================================================ */
+
+/**
+ * Non-blocking refill. Returns:
+ *   > 0 : bytes read
+ *     0 : EOF
+ *    -1 : EAGAIN (no data available)
+ *    -2 : real error
+ */
+static ssize_t recvbuf_fill_nb(hale_recvbuf_t *rb) {
+    /* Compact: move remaining bytes to front */
+    if (rb->pos > 0 && rb->len > rb->pos) {
+        size_t remaining = rb->len - rb->pos;
+        memmove(rb->buf, rb->buf + rb->pos, remaining);
+        rb->len = remaining;
+        rb->pos = 0;
+    } else if (rb->pos > 0) {
+        rb->pos = 0;
+        rb->len = 0;
+    }
+    size_t space = RECVBUF_SIZE - rb->len;
+    if (space == 0) return 0;
+    ssize_t n = recv(rb->fd, rb->buf + rb->len, space, MSG_DONTWAIT);
+    if (n > 0) rb->len += (size_t)n;
+    if (n < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) return -1;
+        return -2;
+    }
+    return n;
+}
+
+/**
+ * Non-blocking readline. Returns Option String:
+ *   some line  — complete CRLF-terminated line (without CRLF)
+ *   none       — need more data (EAGAIN on underlying socket)
+ *
+ * Encoding: Option α = none (box 0) | some a (ctor(1,1,0)[a])
+ */
+LEAN_EXPORT lean_obj_res hale_recvbuf_readline_nb(b_lean_obj_arg buf) {
+    hale_recvbuf_t *rb = get_recvbuf(buf);
+    uint8_t line[8192];
+    size_t line_len = 0;
+
+    for (;;) {
+        while (rb->pos < rb->len) {
+            uint8_t c = rb->buf[rb->pos++];
+            if (line_len > 0 && line[line_len - 1] == '\r' && c == '\n') {
+                lean_object *s = lean_mk_string_from_bytes(
+                    (const char *)line, line_len - 1);
+                lean_obj_res opt = lean_alloc_ctor(1, 1, 0);
+                lean_ctor_set(opt, 0, s);
+                return lean_io_result_mk_ok(opt);
+            }
+            if (line_len < sizeof(line) - 1) {
+                line[line_len++] = c;
+            } else {
+                return mk_io_error("recvbuf_readline_nb: line too long (>8KB)");
+            }
+        }
+        ssize_t n = recvbuf_fill_nb(rb);
+        if (n == -1) {
+            /* EAGAIN — rewind partial line back into buffer for next call */
+            /* The partial data is already consumed from buf, so we need to
+             * save it. Push partial line bytes back by adjusting pos. */
+            /* Actually, the bytes are already consumed. We need to save
+             * partial state. For simplicity, push them back into buf. */
+            if (line_len > 0) {
+                /* Compact buffer first */
+                if (rb->pos > 0 && rb->len > rb->pos) {
+                    size_t remaining = rb->len - rb->pos;
+                    memmove(rb->buf, rb->buf + rb->pos, remaining);
+                    rb->len = remaining;
+                    rb->pos = 0;
+                } else if (rb->pos > 0) {
+                    rb->pos = 0;
+                    rb->len = 0;
+                }
+                /* Prepend partial line back into buffer */
+                if (line_len + rb->len <= RECVBUF_SIZE) {
+                    memmove(rb->buf + line_len, rb->buf, rb->len);
+                    memcpy(rb->buf, line, line_len);
+                    rb->len += line_len;
+                    rb->pos = 0;
+                }
+                /* else: buffer overflow, data lost — shouldn't happen with 4KB buf + 8KB line */
+            }
+            return lean_io_result_mk_ok(lean_box(0)); /* none */
+        }
+        if (n == -2) return mk_io_errno_error();
+        if (n == 0) {
+            /* EOF */
+            if (line_len == 0)
+                return lean_io_result_mk_ok(lean_alloc_ctor(1, 1, 0)); /* some "" */
+            lean_object *s = lean_mk_string_from_bytes(
+                (const char *)line, line_len);
+            lean_obj_res opt = lean_alloc_ctor(1, 1, 0);
+            lean_ctor_set(opt, 0, s);
+            return lean_io_result_mk_ok(opt);
+        }
+    }
+}
+
+/**
+ * Non-blocking readn. Returns (ByteArray × Bool) where Bool = all bytes read.
+ * Encoding: (ByteArray × Bool) = ctor(0,2,0)[arr, box(0 or 1)]
+ */
+LEAN_EXPORT lean_obj_res hale_recvbuf_readn_nb(b_lean_obj_arg buf, size_t n) {
+    hale_recvbuf_t *rb = get_recvbuf(buf);
+    lean_object *arr = lean_alloc_sarray(1, n, n);
+    uint8_t *dst = lean_sarray_cptr(arr);
+    size_t total = 0;
+
+    while (total < n) {
+        size_t avail = rb->len - rb->pos;
+        if (avail > 0) {
+            size_t to_copy = avail < (n - total) ? avail : (n - total);
+            memcpy(dst + total, rb->buf + rb->pos, to_copy);
+            rb->pos += to_copy;
+            total += to_copy;
+        }
+        if (total >= n) break;
+        ssize_t nr = recvbuf_fill_nb(rb);
+        if (nr == -1) {
+            /* EAGAIN — return partial data with complete=false */
+            lean_sarray_set_size(arr, total);
+            lean_obj_res pair = mk_pair(arr, lean_box(0)); /* false */
+            return lean_io_result_mk_ok(pair);
+        }
+        if (nr == -2) { lean_dec(arr); return mk_io_errno_error(); }
+        if (nr == 0) {
+            /* EOF — return what we have with complete=(total==n) */
+            lean_sarray_set_size(arr, total);
+            lean_obj_res pair = mk_pair(arr, lean_box(total >= n ? 1 : 0));
+            return lean_io_result_mk_ok(pair);
+        }
+    }
+    lean_obj_res pair = mk_pair(arr, lean_box(1)); /* true = complete */
+    return lean_io_result_mk_ok(pair);
 }
 
 /* ================================================================

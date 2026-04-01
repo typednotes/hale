@@ -13,15 +13,17 @@
   signature. The compiler threads these constraints through the program and
   rejects any code path that would violate the protocol:
 
-  | Function  | Requires          | Produces           | Enforced by            |
-  |-----------|-------------------|--------------------|------------------------|
-  | `socket`  | (nothing)         | `Socket .fresh`    | return type            |
-  | `bind`    | `Socket .fresh`   | `Socket .bound`    | argument type          |
-  | `listen`  | `Socket .bound`   | `Socket .listening`| argument type          |
-  | `accept`  | `Socket .listening`| `Socket .connected`| argument type         |
-  | `send`    | `Socket .connected`| `Nat`             | argument type          |
-  | `recv`    | `Socket .connected`| `ByteArray`       | argument type          |
-  | `close`   | `Socket state`, `state ≠ .closed` | `Socket .closed` | **proof obligation** |
+  | Function        | Requires            | Produces           | Enforced by            |
+  |-----------------|---------------------|--------------------|------------------------|
+  | `socket`        | (nothing)           | `Socket .fresh`    | return type            |
+  | `bind`          | `Socket .fresh`     | `Socket .bound`    | argument type          |
+  | `listen`        | `Socket .bound`     | `Socket .listening`| argument type          |
+  | `accept`        | `Socket .listening` | `AcceptOutcome`    | argument type          |
+  | `connect`       | `Socket .fresh`     | `ConnectOutcome`   | argument type          |
+  | `connectFinish` | `Socket .connecting`| `ConnectOutcome`   | argument type          |
+  | `send`          | `Socket .connected` | `SendOutcome`      | argument type          |
+  | `recv`          | `Socket .connected` | `RecvOutcome`      | argument type          |
+  | `close`         | `Socket state`, `state ≠ .closed` | `Socket .closed` | **proof obligation** |
 
   The `close` function is the most interesting case: it accepts a socket in
   **any** state, but requires the caller to supply a proof that the state is
@@ -43,7 +45,8 @@
   ```
   Fresh ──bind──→ Bound ──listen──→ Listening ──accept──→ Connected
     │                                                      (send/recv)
-    └──connect──→ Connected                                    │
+    ├──connect──→ Connected (immediate)
+    └──connect──→ Connecting ──connectFinish──→ Connected
                                                                │
   Any state ──close(proof: state ≠ .closed)──→ Closed
   ```
@@ -129,36 +132,46 @@ def listen (s : Socket .bound) (backlog : Nat := 128) : IO (Socket .listening) :
   socketListen s.raw backlog.toUSize
   pure (Socket.mk s.raw)
 
-/-- Accept a connection on a listening socket.
-    Returns a new connected socket and the peer address.
-    The listener remains in the listening state.
-    $$\text{accept} : \text{Socket}\ \texttt{.listening} \to \text{IO}(\text{Socket}\ \texttt{.connected} \times \text{SockAddr})$$
+/-- Accept a connection on a listening socket (non-blocking).
+    Returns `AcceptOutcome` — the caller must pattern match on success,
+    `wouldBlock` (EAGAIN), or error.
+    $$\text{accept} : \text{Socket}\ \texttt{.listening} \to \text{IO AcceptOutcome}$$
     POSIX: accept(2) requires a listening socket. -/
-def accept (s : Socket .listening) : IO (Socket .connected × SockAddr) := do
-  let clientRaw ← socketAccept s.raw
-  let host ← FFI.getPeerNameHost clientRaw
-  let port ← FFI.getPeerNamePort clientRaw
-  pure (Socket.mk clientRaw, ⟨host, port⟩)
+def accept (s : Socket .listening) : IO AcceptOutcome :=
+  socketAcceptNB s.raw
 
-/-- Connect a fresh socket to a remote address.
-    $$\text{connect} : \text{Socket}\ \texttt{.fresh} \to \text{SockAddr} \to \text{IO}(\text{Socket}\ \texttt{.connected})$$
+/-- Connect a fresh socket to a remote address (non-blocking).
+    Returns `ConnectOutcome` — may be `.connected` (immediate) or
+    `.inProgress` (EINPROGRESS, poll for writability then call `connectFinish`).
+    $$\text{connect} : \text{Socket}\ \texttt{.fresh} \to \text{SockAddr} \to \text{IO ConnectOutcome}$$
     POSIX: connect(2) on an unbound socket implicitly binds it. -/
-def connect (s : Socket .fresh) (addr : SockAddr) : IO (Socket .connected) := do
-  socketConnect s.raw addr.host addr.port
-  pure (Socket.mk s.raw)
+def connect (s : Socket .fresh) (addr : SockAddr) : IO ConnectOutcome :=
+  socketConnectNB s.raw addr.host addr.port
 
-/-- Send a ByteArray on a connected socket. Returns bytes sent.
-    $$\text{send} : \text{Socket}\ \texttt{.connected} \to \text{ByteArray} \to \text{IO}(\mathbb{N})$$
+/-- Check whether a non-blocking connect completed.
+    Call after the event loop reports the socket is writable.
+    $$\text{connectFinish} : \text{Socket}\ \texttt{.connecting} \to \text{IO ConnectOutcome}$$ -/
+def connectFinish (s : Socket .connecting) : IO ConnectOutcome :=
+  socketConnectFinish s.raw
+
+/-- Send a ByteArray on a connected socket (non-blocking).
+    Returns `SendOutcome` — `.sent n` (partial or full), `.wouldBlock`, or `.error`.
+    $$\text{send} : \text{Socket}\ \texttt{.connected} \to \text{ByteArray} \to \text{IO SendOutcome}$$
     POSIX: send(2) requires a connected socket. -/
-@[inline] def send (s : Socket .connected) (data : ByteArray) : IO Nat := do
-  let n ← socketSend s.raw data
-  pure n.toNat
+@[inline] def send (s : Socket .connected) (data : ByteArray) : IO SendOutcome :=
+  socketSendNB s.raw data
 
-/-- Receive up to `maxlen` bytes from a connected socket.
-    $$\text{recv} : \text{Socket}\ \texttt{.connected} \to \mathbb{N} \to \text{IO}(\text{ByteArray})$$
+/-- Receive up to `maxlen` bytes from a connected socket (non-blocking).
+    Returns `RecvOutcome` — `.data`, `.wouldBlock`, `.eof` (peer closed), or `.error`.
+    $$\text{recv} : \text{Socket}\ \texttt{.connected} \to \mathbb{N} \to \text{IO RecvOutcome}$$
     POSIX: recv(2) requires a connected socket. -/
-@[inline] def recv (s : Socket .connected) (maxlen : Nat := 4096) : IO ByteArray :=
-  socketRecv s.raw maxlen.toUSize
+@[inline] def recv (s : Socket .connected) (maxlen : Nat := 4096) : IO RecvOutcome :=
+  socketRecvNB s.raw maxlen.toUSize
+
+/-- Get the raw file descriptor for EventLoop correlation.
+    $$\text{getFd} : \text{Socket}\ s \to \text{IO Nat}$$ -/
+@[inline] def getFd (s : Socket state) : IO Nat :=
+  socketGetFd s.raw
 
 /-- Shutdown a connected socket for reading, writing, or both.
     $$\text{shutdown} : \text{Socket}\ \texttt{.connected} \to \text{ShutdownHow} \to \text{IO}(\text{Unit})$$
@@ -226,9 +239,9 @@ def getSockName (s : Socket state) : IO SockAddr := do
 def getAddrInfo (host : String) (service : String) : IO (List AddrInfo) := do
   let results ← FFI.getAddrInfo host service
   pure (results.map fun (fam, h, p) =>
-    { family := Family.ofUInt8 fam.toNat.toUInt8
+    { family := Family.ofUInt8 fam.toUInt8
     , host := h
-    , port := p.toNat })
+    , port := p })
 
 -- ══════════════════════════════════════════════════════════════
 -- Convenience: TCP server
@@ -297,7 +310,7 @@ def create : IO EventLoop :=
     $$\text{wait} : \text{EventLoop} \to \text{Nat} \to \text{IO}(\text{List}\ \text{ReadyEvent})$$ -/
 def wait (el : EventLoop) (timeoutMs : Nat := 1000) : IO (List ReadyEvent) := do
   let results ← FFI.eventLoopWait el timeoutMs.toUSize
-  pure (results.map fun (fd, evts) => ⟨fd, ⟨evts⟩⟩)
+  pure (results.map fun (fd, evts) => ⟨fd, ⟨evts.toUSize⟩⟩)
 
 end EventLoop
 

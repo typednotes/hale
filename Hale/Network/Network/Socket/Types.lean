@@ -8,7 +8,8 @@
 
   The POSIX socket API is a state machine: a socket must be created, then
   bound, then set to listen, before it can accept connections. Calling
-  operations in the wrong order is undefined behaviour in C.
+  operations in the wrong order returns an error code that nothing forces
+  you to check.
 
   Lean 4's dependent types let us encode this state machine directly in the
   type system via a **phantom type parameter** on `Socket`:
@@ -25,6 +26,18 @@
   additionally prevent **double-close** at compile time: once a socket enters
   the `.closed` state, no operation (including `close` itself) will accept it.
 
+  ## Non-blocking I/O and External State Changes
+
+  All socket operations are non-blocking by default and return **outcome
+  sum types** (`AcceptOutcome`, `RecvOutcome`, `SendOutcome`, `ConnectOutcome`)
+  that force callers to handle every possibility: success, `wouldBlock`
+  (EAGAIN), EOF (peer closed), and errors. This models the fact that OS-level
+  state can change asynchronously (peer disconnect, non-blocking connect in
+  progress, send buffer full).
+
+  The `.connecting` state represents a non-blocking `connect()` that returned
+  `EINPROGRESS` -- the TCP handshake is in flight but not yet resolved.
+
   ## Types
 
   - `Family`: AF_INET, AF_INET6, AF_UNIX
@@ -34,6 +47,7 @@
   - `EventLoop`: opaque event multiplexing handle (kqueue/epoll)
   - `SockAddr`: host + port
   - `Socket`: opaque socket handle parameterised by `SocketState`
+  - `AcceptOutcome`, `ConnectOutcome`, `RecvOutcome`, `SendOutcome`: outcome sum types
 
   ## Design
 
@@ -142,9 +156,11 @@ opaque EventLoopHandle : NonemptyType
 def EventLoop : Type := EventLoopHandle.type
 instance : Nonempty EventLoop := EventLoopHandle.property
 
-/-- A ready event: which socket fd became ready, and what events fired. -/
+/-- A ready event: which socket fd became ready, and what events fired.
+    Uses `Nat` (boxed) for the fd to avoid compiled-mode ABI issues with
+    `USize` in polymorphic positions (Prod fields, List elements). -/
 structure ReadyEvent where
-  socketFd : USize
+  socketFd : Nat
   events : EventType
 deriving Repr
 
@@ -182,19 +198,24 @@ instance : Nonempty RawSocket := SocketHandle.property
     parameter on `Socket`. Each API function constrains which state it accepts
     and which state it returns, so the compiler enforces the protocol:
 
-    - `bind`   requires `.fresh`,     produces `.bound`
-    - `listen` requires `.bound`,     produces `.listening`
-    - `accept` requires `.listening`, produces `.connected`
-    - `close`  requires `state ≠ .closed` (proof obligation), produces `.closed`
+    - `bind`          requires `.fresh`,      produces `.bound`
+    - `listen`        requires `.bound`,      produces `.listening`
+    - `accept`        requires `.listening`,  returns `AcceptOutcome`
+    - `connect`       requires `.fresh`,      returns `ConnectOutcome`
+    - `connectFinish` requires `.connecting`, returns `ConnectOutcome`
+    - `send`          requires `.connected`,  returns `SendOutcome`
+    - `recv`          requires `.connected`,  returns `RecvOutcome`
+    - `close`         requires `state ≠ .closed` (proof obligation), produces `.closed`
 
     The parameter is fully erased at runtime (zero cost). Protocol violations
     are compile-time errors -- not exceptions, not asserts, not runtime checks. -/
 inductive SocketState where
-  | fresh      -- Created via socket(), not yet bound or connected
-  | bound      -- bind() succeeded
-  | listening  -- listen() succeeded
-  | connected  -- connect() or accept() produced this socket
-  | closed     -- close() succeeded — no further operations are valid
+  | fresh       -- Created via socket(), not yet bound or connected
+  | bound       -- bind() succeeded
+  | listening   -- listen() succeeded
+  | connecting  -- Non-blocking connect() returned EINPROGRESS
+  | connected   -- connect() or accept() produced this socket
+  | closed      -- close() succeeded — no further operations are valid
 deriving BEq, DecidableEq, Repr
 
 /-- A socket tagged with its POSIX lifecycle state.
@@ -208,7 +229,8 @@ deriving BEq, DecidableEq, Repr
     ```
     Fresh ──bind──→ Bound ──listen──→ Listening ──accept──→ Connected
       │                                                      (send/recv)
-      └──connect──→ Connected                                    │
+      ├──connect──→ Connected (immediate)
+      └──connect──→ Connecting ──connectFinish──→ Connected
                                                                  │
     Any state ──close(proof: state ≠ .closed)──→ Closed
     ```
@@ -228,20 +250,72 @@ instance : Nonempty (Socket s) :=
   let ⟨raw⟩ := SocketHandle.property
   ⟨Socket.mk raw⟩
 
-/-- State distinctness: all four POSIX socket states are distinct. -/
+/-- State distinctness: all six POSIX socket states are pairwise distinct (15 theorems). -/
 theorem SocketState.fresh_ne_bound : SocketState.fresh ≠ SocketState.bound := by decide
 theorem SocketState.fresh_ne_listening : SocketState.fresh ≠ SocketState.listening := by decide
+theorem SocketState.fresh_ne_connecting : SocketState.fresh ≠ SocketState.connecting := by decide
 theorem SocketState.fresh_ne_connected : SocketState.fresh ≠ SocketState.connected := by decide
-theorem SocketState.bound_ne_listening : SocketState.bound ≠ SocketState.listening := by decide
-theorem SocketState.bound_ne_connected : SocketState.bound ≠ SocketState.connected := by decide
-theorem SocketState.listening_ne_connected : SocketState.listening ≠ SocketState.connected := by decide
 theorem SocketState.fresh_ne_closed : SocketState.fresh ≠ SocketState.closed := by decide
+theorem SocketState.bound_ne_listening : SocketState.bound ≠ SocketState.listening := by decide
+theorem SocketState.bound_ne_connecting : SocketState.bound ≠ SocketState.connecting := by decide
+theorem SocketState.bound_ne_connected : SocketState.bound ≠ SocketState.connected := by decide
 theorem SocketState.bound_ne_closed : SocketState.bound ≠ SocketState.closed := by decide
+theorem SocketState.listening_ne_connecting : SocketState.listening ≠ SocketState.connecting := by decide
+theorem SocketState.listening_ne_connected : SocketState.listening ≠ SocketState.connected := by decide
 theorem SocketState.listening_ne_closed : SocketState.listening ≠ SocketState.closed := by decide
+theorem SocketState.connecting_ne_connected : SocketState.connecting ≠ SocketState.connected := by decide
+theorem SocketState.connecting_ne_closed : SocketState.connecting ≠ SocketState.closed := by decide
 theorem SocketState.connected_ne_closed : SocketState.connected ≠ SocketState.closed := by decide
 
 /-- SocketState BEq is reflexive — each state equals itself. -/
 theorem SocketState.beq_refl (s : SocketState) : (s == s) = true := by
   cases s <;> decide
+
+/-! ### Outcome Sum Types
+
+    Non-blocking socket operations return **outcome types** that force callers
+    to handle every possibility. The type system models the programmer's
+    *knowledge* of the socket state, updated at each synchronization point.
+
+    These encode the fact that OS-level state can change asynchronously:
+    peer disconnect, non-blocking connect in progress, send buffer full, etc. -/
+
+/-- Outcome of a non-blocking `accept` on a listening socket.
+    - `.accepted` — a new connected socket and the peer address
+    - `.wouldBlock` — no pending connection (EAGAIN)
+    - `.error` — OS-level error -/
+inductive AcceptOutcome where
+  | accepted   : Socket .connected → SockAddr → AcceptOutcome
+  | wouldBlock : AcceptOutcome
+  | error      : IO.Error → AcceptOutcome
+
+/-- Outcome of a non-blocking `connect` or `connectFinish`.
+    - `.connected` — TCP handshake completed
+    - `.inProgress` — EINPROGRESS, handshake in flight (poll for writability)
+    - `.refused` — connect failed (ECONNREFUSED, ETIMEDOUT, etc.) -/
+inductive ConnectOutcome where
+  | connected  : Socket .connected → ConnectOutcome
+  | inProgress : Socket .connecting → ConnectOutcome
+  | refused    : IO.Error → ConnectOutcome
+
+/-- Outcome of a non-blocking `recv` on a connected socket.
+    - `.data` — received bytes (size > 0)
+    - `.wouldBlock` — no data available yet (EAGAIN)
+    - `.eof` — peer closed the connection (recv returned 0)
+    - `.error` — OS-level error (ECONNRESET, etc.) -/
+inductive RecvOutcome where
+  | data       : ByteArray → RecvOutcome
+  | wouldBlock : RecvOutcome
+  | eof        : RecvOutcome
+  | error      : IO.Error → RecvOutcome
+
+/-- Outcome of a non-blocking `send` on a connected socket.
+    - `.sent` — n bytes written (may be partial)
+    - `.wouldBlock` — send buffer full (EAGAIN)
+    - `.error` — OS-level error (EPIPE, ECONNRESET, etc.) -/
+inductive SendOutcome where
+  | sent       : Nat → SendOutcome
+  | wouldBlock : SendOutcome
+  | error      : IO.Error → SendOutcome
 
 end Network.Socket

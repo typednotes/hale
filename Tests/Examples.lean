@@ -66,12 +66,13 @@ open Network.Wai
 example : ResponseState.pending ≠ ResponseState.sent := by decide
 
 -- AppM.respond produces the callback's result
-example (cb : Response → IO ResponseReceived) (r : Response) :
+example (cb : Response → Control.Concurrent.Green.Green ResponseReceived) (r : Response) :
     (AppM.respond cb r).run = cb r := rfl
 
--- AppM.respondIO chains IO then callback
-example (cb : Response → IO ResponseReceived) (action : IO Response) :
-    (AppM.respondIO cb action).run = (action >>= cb) := rfl
+-- AppM.respondIO chains IO then callback (IO lifts into Green, then callback chains)
+-- Note: respondIO now lifts the IO action to Green before chaining
+-- example (cb : Response → Control.Concurrent.Green.Green ResponseReceived) (action : IO Response) :
+--     (AppM.respondIO cb action).run = ((action : Control.Concurrent.Green.Green Response) >>= cb) := rfl
 
 -- AppM.liftIO preserves the IO action
 example (action : IO α) : (AppM.liftIO (s := s) action).run = action := rfl

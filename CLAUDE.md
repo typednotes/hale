@@ -389,6 +389,22 @@ Reference: https://hackage.haskell.org/package/wai-app-static
 | `Hale.WaiAppStatic.WaiAppStatic.Storage.Filesystem` | `WaiAppStatic.Storage.Filesystem` |
 | `Hale.WaiAppStatic.Network.Wai.Application.Static` | `Network.Wai.Application.Static` |
 
+Reference: https://hackage.haskell.org/package/http-client (adapted implementation)
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.HttpClient.Network.HTTP.Client.Types` | `Network.HTTP.Client` (types) |
+| `Hale.HttpClient.Network.HTTP.Client.Connection` | `Network.HTTP.Client` (connection) |
+| `Hale.HttpClient.Network.HTTP.Client.Request` | `Network.HTTP.Client` (request) |
+| `Hale.HttpClient.Network.HTTP.Client.Response` | `Network.HTTP.Client` (response) |
+| `Hale.HttpClient.Network.HTTP.Client.Redirect` | `Network.HTTP.Client` (redirect) |
+
+Reference: https://hackage.haskell.org/package/req
+
+| Lean Module | Haskell Module |
+|---|---|
+| `Hale.Req.Network.HTTP.Req` | `Network.HTTP.Req` |
+
 ## Folder Organization Policy
 
 The `Hale` project ports multiple Haskell libraries. Each Haskell library gets its own **top-level folder** named after the library (Lean naming convention). Within that folder, the **subfolder path mirrors the Haskell module path** exactly.

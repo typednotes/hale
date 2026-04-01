@@ -31,22 +31,22 @@ def bindPortTCP (port : UInt16) (host : String := "0.0.0.0") : IO (Socket .liste
     $$\text{getSocketTCP} : \text{String} \to \text{UInt16} \to \text{IO}(\text{Socket}\ \texttt{.connected} \times \text{SockAddr})$$ -/
 def getSocketTCP (host : String) (port : UInt16) : IO (Socket .connected × SockAddr) := do
   let s ← socket .inet .stream
-  let s ← connect s ⟨host, port⟩
+  let s ← Blocking.connect s ⟨host, port⟩
   pure (s, ⟨host, port⟩)
 
 /-- Accept a connection on a listening socket, retrying on transient errors.
     $$\text{acceptSafe} : \text{Socket}\ \texttt{.listening} \to \text{IO}(\text{Socket}\ \texttt{.connected} \times \text{SockAddr})$$ -/
 partial def acceptSafe (serverSock : Socket .listening) : IO (Socket .connected × SockAddr) := do
   try
-    accept serverSock
+    Blocking.accept serverSock
   catch _ =>
     IO.sleep 10
     acceptSafe serverSock
 
 /-- Create AppData from a connected socket. -/
 def mkAppData (clientSock : Socket .connected) (addr : SockAddr) : AppData :=
-  { appRead := recv clientSock 4096
-  , appWrite := fun data => do let _ ← send clientSock data; pure ()
+  { appRead := Blocking.recv clientSock 4096
+  , appWrite := fun data => Blocking.sendAll clientSock data
   , appSockAddr := addr
   , appClose := do let _ ← close clientSock; pure () }
 

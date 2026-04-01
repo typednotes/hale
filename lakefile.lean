@@ -3,6 +3,9 @@ open System Lake DSL
 
 package hale where
   version := v!"0.1.0"
+  description := "Haskell-inspired libraries for Lean 4 with maximalist typing"
+  keywords := #["haskell", "web-server", "warp", "http", "wai", "networking", "sockets", "dependent-types"]
+  license := "Apache-2.0"
 
 require «doc-gen4» from git
   "https://github.com/leanprover/doc-gen4" @ "main"
@@ -55,3 +58,9 @@ lean_exe «hale-tests» where
 
 lean_exe «echo-server» where
   root := `Examples.Echo
+
+lean_exe «bench-server» where
+  root := `bench.BenchServer
+
+lean_exe «dispatcher-test» where
+  root := `bench.DispatcherTest

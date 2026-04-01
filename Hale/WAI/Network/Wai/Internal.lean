@@ -28,7 +28,7 @@
 
   The result: the Lean 4 kernel verifies at compile time that every
   `Application` invokes the response callback exactly once.  The `AppM`
-  wrapper is erased at runtime (it is just `IO` underneath).
+  wrapper is erased at runtime (it is just `Green` underneath).
 
   ## Guarantees (compile-time, zero-cost)
 
@@ -38,18 +38,22 @@
   - `private mk` prevents circumventing the guarantee
   - `Application` CPS type enables safe resource bracketing by the server
   - `Middleware` is `Application → Application` -- proven associative
+  - `AppM` wraps `Green` — all application code runs on the fair green
+    thread monad, freeing pool threads when awaiting I/O
 -/
 
 import Hale.HttpTypes
 import Hale.Vault
 import Hale.Network
 import Hale.SimpleSendfile
+import Hale.Base.Control.Concurrent.Green
 
 namespace Network.Wai
 
 open Network.HTTP.Types
 open Network.Socket (SockAddr)
 open Network.Sendfile (FilePart)
+open Control.Concurrent.Green (Green)
 
 /-- Opaque token proving a response was sent.
 
@@ -247,15 +251,15 @@ deriving BEq, DecidableEq, Repr
 /-- Response states are distinct. -/
 theorem ResponseState.pending_ne_sent : ResponseState.pending ≠ ResponseState.sent := by decide
 
-/-- Indexed IO monad tracking response lifecycle state transitions.
+/-- Indexed Green monad tracking response lifecycle state transitions.
 
     This is the core dependent-type mechanism that enforces the WAI
     exactly-once-response contract at compile time.
 
-    `AppM pre post α` represents an IO action that transitions the response
-    lifecycle from state `pre` to state `post`.  The state indices are
-    checked by the Lean 4 kernel during type-checking and **erased at
-    runtime** -- `AppM` compiles to exactly the same code as plain `IO`.
+    `AppM pre post α` represents a Green computation that transitions the
+    response lifecycle from state `pre` to state `post`.  The state indices
+    are checked by the Lean 4 kernel during type-checking and **erased at
+    runtime** -- `AppM` compiles to exactly the same code as plain `Green`.
 
     **Why `private mk`?**  The constructor is private, so the only ways to
     build an `AppM` value are through the provided combinators:
@@ -270,15 +274,15 @@ theorem ResponseState.pending_ne_sent : ResponseState.pending ≠ ResponseState.
     - A second `respond` would require `AppM .sent _ _` with pre-state `.sent`,
       but `respond`'s pre-state is `.pending` -- **type mismatch, compile-time error**.
 
-    **Trust boundary:** Server code (Warp) extracts the `IO` via `.run` at
-    the edge.  Middleware that needs full IO control can use the `protected`
+    **Trust boundary:** Server code (Warp) extracts the `Green` via `.run`
+    at the edge.  Middleware that needs full control can use the `protected`
     escape hatch `AppM.unsafeLift`, which requires an explicit `open`.
 
-    $$\text{AppM}\ s_1\ s_2\ \alpha = \text{IO}(\alpha) \text{ (opaque, indexed by state)}$$ -/
+    $$\text{AppM}\ s_1\ s_2\ \alpha = \text{Green}(\alpha) \text{ (opaque, indexed by state)}$$ -/
 structure AppM (pre post : ResponseState) (α : Type) where
   private mk ::
-  /-- Extract the underlying IO action. For server/framework code only. -/
-  run : IO α
+  /-- Extract the underlying Green computation. For server/framework code only. -/
+  run : Green α
 
 namespace AppM
 
@@ -287,8 +291,9 @@ namespace AppM
 @[inline] def ipure (a : α) : AppM s s α := ⟨pure a⟩
 
 /-- Lift a plain IO action without changing state.
+    IO is automatically lifted into Green via `MonadLift IO Green`.
     $$\text{liftIO} : \text{IO}(\alpha) \to \text{AppM}\ s\ s\ \alpha$$ -/
-@[inline] def liftIO (action : IO α) : AppM s s α := ⟨action⟩
+@[inline] def liftIO (action : IO α) : AppM s s α := ⟨(action : Green α)⟩
 
 /-- Indexed bind: chains state transitions.
     $$\text{ibind} : \text{AppM}\ s_1\ s_2\ \alpha \to (\alpha \to \text{AppM}\ s_2\ s_3\ \beta) \to \text{AppM}\ s_1\ s_3\ \beta$$ -/
@@ -297,30 +302,32 @@ namespace AppM
 
 /-- Send a response, transitioning from `.pending` to `.sent`.
     This is the **only** way to produce `AppM .pending .sent ResponseReceived`.
-    $$\text{respond} : (\text{Response} \to \text{IO}\ \text{ResponseReceived}) \to \text{Response} \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$ -/
-@[inline] def respond (callback : Response → IO ResponseReceived) (resp : Response) :
+    The callback returns `Green ResponseReceived` — all response sending
+    happens on the non-blocking Green monad.
+    $$\text{respond} : (\text{Response} \to \text{Green}\ \text{ResponseReceived}) \to \text{Response} \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$ -/
+@[inline] def respond (callback : Response → Green ResponseReceived) (resp : Response) :
     AppM .pending .sent ResponseReceived :=
   ⟨callback resp⟩
 
 /-- Perform IO then respond with the computed Response.
     Convenient for the common pattern of "compute a response, then send it."
     Uses `do` notation naturally inside the `IO Response` block.
-    $$\text{respondIO} : (\text{Response} \to \text{IO}\ \text{ResponseReceived}) \to \text{IO}(\text{Response}) \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$ -/
-@[inline] def respondIO (callback : Response → IO ResponseReceived) (action : IO Response) :
+    $$\text{respondIO} : (\text{Response} \to \text{Green}\ \text{ResponseReceived}) \to \text{IO}(\text{Response}) \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$ -/
+@[inline] def respondIO (callback : Response → Green ResponseReceived) (action : IO Response) :
     AppM .pending .sent ResponseReceived :=
-  ⟨action >>= callback⟩
+  ⟨(action : Green Response) >>= callback⟩
 
 /-- Perform an IO action then continue with a state-changing computation.
     Useful for middleware that needs IO before deciding whether to delegate or respond.
     $$\text{ioThen} : \text{IO}(\alpha) \to (\alpha \to \text{AppM}\ s_1\ s_2\ \beta) \to \text{AppM}\ s_1\ s_2\ \beta$$ -/
 @[inline] def ioThen (action : IO α) (f : α → AppM s₁ s₂ β) : AppM s₁ s₂ β :=
-  ⟨action >>= fun a => (f a).run⟩
+  ⟨(action : Green α) >>= fun a => (f a).run⟩
 
 /-- Escape hatch for framework/middleware code that needs full IO control
     over state transitions. **Not for application code.** The caller is
     responsible for ensuring exactly-once response semantics.
     $$\text{unsafeLift} : \text{IO}(\alpha) \to \text{AppM}\ s_1\ s_2\ \alpha$$ -/
-protected def unsafeLift (action : IO α) : AppM pre post α := ⟨action⟩
+protected def unsafeLift (action : IO α) : AppM pre post α := ⟨(action : Green α)⟩
 
 end AppM
 
@@ -330,12 +337,12 @@ instance : Monad (AppM s s) where
   pure := AppM.ipure
   bind := AppM.ibind
 
-/-- IO actions lift into `AppM s s` automatically. -/
+/-- IO actions lift into `AppM s s` automatically (via IO → Green → AppM). -/
 instance : MonadLiftT IO (AppM s s) where
   monadLift := AppM.liftIO
 
 /-- A WAI application.
-    $$\text{Application} = \text{Request} \to (\text{Response} \to \text{IO}(\text{ResponseReceived})) \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$
+    $$\text{Application} = \text{Request} \to (\text{Response} \to \text{Green}(\text{ResponseReceived})) \to \text{AppM}\ \texttt{.pending}\ \texttt{.sent}\ \text{ResponseReceived}$$
 
     The return type `AppM .pending .sent ResponseReceived` is the key
     dependent-type innovation over Haskell's WAI.  It encodes three
@@ -347,9 +354,13 @@ instance : MonadLiftT IO (AppM s s) where
     3. **Response was sent through the callback** (`private mk` prevents
        fabricating the `AppM` value without calling `respond`).
 
-    Server implementations (Warp) extract the underlying `IO` via `.run`
-    at the trust boundary.  Application code never touches `.run`. -/
-abbrev Application := Request → (Response → IO ResponseReceived) → AppM .pending .sent ResponseReceived
+    Server implementations (Warp) extract the underlying `Green` via `.run`
+    at the trust boundary.  Application code never touches `.run`.
+
+    The callback takes `Response → Green ResponseReceived` — all response
+    sending happens on the non-blocking Green monad, freeing pool threads
+    while awaiting socket I/O. -/
+abbrev Application := Request → (Response → Green ResponseReceived) → AppM .pending .sent ResponseReceived
 
 /-- A WAI middleware transforms an application.
     $$\text{Middleware} = \text{Application} \to \text{Application}$$ -/

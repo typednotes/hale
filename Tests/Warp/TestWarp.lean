@@ -224,14 +224,14 @@ def loopbackTest : IO (List TestResult) := do
   try
     -- Connect to the server (fresh → connected state transition)
     let freshSock ← Network.Socket.socket .inet .stream
-    let clientSock ← Network.Socket.connect freshSock ⟨"127.0.0.1", port⟩
+    let clientSock ← Network.Socket.Blocking.connect freshSock ⟨"127.0.0.1", port⟩
     try
       -- Send a minimal HTTP request
       let reqStr := "GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"
-      let _ ← Network.Socket.send clientSock reqStr.toUTF8
+      let _ ← Network.Socket.Blocking.send clientSock reqStr.toUTF8
       -- Read the response
       IO.sleep 100  -- Give server time to respond
-      let respBytes ← Network.Socket.recv clientSock 4096
+      let respBytes ← Network.Socket.Blocking.recv clientSock 4096
       let respStr := String.fromUTF8! respBytes
 
       -- Verify response contains expected parts

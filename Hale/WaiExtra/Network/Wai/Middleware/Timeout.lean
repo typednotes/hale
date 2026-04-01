@@ -6,12 +6,14 @@
 -/
 import Hale.WAI
 import Hale.HttpTypes
+import Hale.Base.Control.Concurrent.Green
 
 namespace Network.Wai.Middleware
 
 open Network.Wai
 open Network.HTTP.Types
 open Network.Wai.AppM (unsafeLift)
+open Control.Concurrent.Green (Green)
 
 /-- Enforce a timeout on request handling.
     If the inner application does not respond within the given number of
@@ -25,27 +27,28 @@ def timeout (ms : Nat) : Middleware :=
   fun app req respond =>
     unsafeLift do
       -- Atomic flag: ensures exactly one call to `respond`
-      let respondedRef ← IO.mkRef false
-      let respondOnce : Response → IO ResponseReceived := fun resp => do
-        let alreadyResponded ← respondedRef.swap true
+      let respondedRef ← (IO.mkRef false : IO _)
+      let respondOnce : Response → Green ResponseReceived := fun resp => do
+        let alreadyResponded ← (respondedRef.swap true : IO _)
         if alreadyResponded then
           -- Second responder loses — return a dummy token
           pure ResponseReceived.done
         else
           respond resp
       -- Run the app in a background task with the guarded callback
-      let resultRef ← IO.mkRef (none : Option ResponseReceived)
-      let _task ← IO.asTask do
-        let r ← (app req respondOnce).run
-        resultRef.set (some r)
+      let resultRef ← (IO.mkRef (none : Option ResponseReceived) : IO _)
+      let token ← (Std.CancellationToken.new : IO _)
+      let _task ← (IO.asTask do
+        let r ← Green.block (app req respondOnce).run token
+        resultRef.set (some r) : IO _)
       -- Wait with timeout
-      IO.sleep ms.toUInt32
-      let result ← resultRef.get
+      (IO.sleep ms.toUInt32 : IO _)
+      let result ← (resultRef.get : IO _)
       match result with
       | some r => return r
       | none =>
         -- Timed out — respond with 503 (respondOnce ensures at most one send)
-        respondOnce (.responseBuilder status503 []
-          "Service Unavailable: request timed out".toUTF8)
+        Green.block (respondOnce (.responseBuilder status503 []
+          "Service Unavailable: request timed out".toUTF8)) token
 
 end Network.Wai.Middleware

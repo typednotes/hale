@@ -22,9 +22,14 @@ open Network.Socket
   FFI.socketSendAll s.raw data
 
 /-- Receive up to `maxlen` bytes as a ByteArray from a connected socket.
+    Blocking wrapper: loops on wouldBlock, returns empty on EOF.
     $$\text{recv} : \text{Socket}\ \texttt{.connected} \to \mathbb{N} \to \text{IO}(\text{ByteArray})$$ -/
-def recv (s : Socket .connected) (maxlen : Nat := 4096) : IO ByteArray :=
-  Network.Socket.recv s maxlen
+partial def recv (s : Socket .connected) (maxlen : Nat := 4096) : IO ByteArray := do
+  match ← Network.Socket.recv s maxlen with
+  | .data bytes => pure bytes
+  | .wouldBlock => recv s maxlen
+  | .eof => pure ByteArray.empty
+  | .error e => throw e
 
 /-- Send a UDP datagram to a specific host and port on a connected socket.
     Returns the number of bytes sent.

@@ -40,3 +40,8 @@ import Hale.WebSockets
 import Hale.WaiWebSockets
 import Hale.WaiLogger
 import Hale.WaiAppStatic
+import Hale.HttpClient
+import Hale.Req
+import Hale.Conduit
+import Hale.DataFrame
+import Hale.HttpConduit

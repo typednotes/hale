@@ -1,13 +1,14 @@
 /*
  * ffi/tls.c — OpenSSL/LibreSSL TLS FFI for Lean 4
  *
- * Wraps OpenSSL's SSL_CTX, SSL objects for TLS server support.
+ * Wraps OpenSSL's SSL_CTX, SSL objects for TLS server and client support.
  * Follows the same lean_alloc_external pattern as ffi/network.c.
  *
  * Features:
  * - TLS 1.2 / 1.3 support
  * - ALPN negotiation (for HTTP/2)
  * - Client certificate retrieval
+ * - Client-side TLS with system CA trust and SNI
  * - Proper resource cleanup via GC finalizer
  *
  * Platform: macOS and Linux. Requires OpenSSL or LibreSSL.
@@ -302,6 +303,183 @@ LEAN_EXPORT lean_obj_res hale_tls_close(
 }
 
 /* ────────────────────────────────────────────────────────────
+ * Non-blocking TLS operations
+ *
+ * Return tagged TLSOutcome instead of throwing on WANT_READ/WRITE.
+ * Tag encoding matches Lean inductive:
+ *   tag 0 = .ok α           — ctor(0, 1, 0)[value]
+ *   tag 1 = .wantRead       — ctor(1, 0, 0)
+ *   tag 2 = .wantWrite      — ctor(2, 0, 0)
+ *   tag 3 = .error IO.Error — ctor(3, 1, 0)[err]
+ * ──────────────────────────────────────────────────────────── */
+
+static lean_obj_res mk_tls_io_error(const char *msg) {
+    return lean_mk_io_user_error(lean_mk_string(msg));
+}
+
+static lean_obj_res mk_tls_ssl_error(SSL *ssl, int ret) {
+    int err = SSL_get_error(ssl, ret);
+    char buf[256];
+    unsigned long sslerr = ERR_get_error();
+    if (sslerr) {
+        ERR_error_string_n(sslerr, buf, sizeof(buf));
+    } else {
+        snprintf(buf, sizeof(buf), "SSL error %d", err);
+    }
+    return mk_tls_io_error(buf);
+}
+
+/**
+ * Non-blocking TLS handshake.
+ * Returns TLSOutcome TLSSession.
+ */
+LEAN_EXPORT lean_obj_res hale_tls_accept_socket_nb(
+    b_lean_obj_arg ctx_obj,
+    b_lean_obj_arg sock_obj,
+    lean_obj_arg world
+) {
+    int fd = (int)(intptr_t)lean_get_external_data(sock_obj);
+    ensure_classes();
+
+    hale_ssl_ctx_t *ctx_wrapper = lean_get_external_data(ctx_obj);
+    SSL *ssl = SSL_new(ctx_wrapper->ctx);
+    if (!ssl) {
+        lean_obj_res err = mk_tls_io_error("SSL_new failed");
+        lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+
+    SSL_set_fd(ssl, fd);
+
+    int ret = SSL_accept(ssl);
+    if (ret == 1) {
+        /* Handshake complete */
+        hale_ssl_t *wrapper = malloc(sizeof(hale_ssl_t));
+        if (!wrapper) {
+            SSL_free(ssl);
+            lean_obj_res err = mk_tls_io_error("malloc failed");
+            lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+            lean_ctor_set(r, 0, err);
+            return lean_io_result_mk_ok(r);
+        }
+        wrapper->ssl = ssl;
+        wrapper->fd = fd;
+        lean_obj_res session = lean_alloc_external(g_hale_ssl_class, wrapper);
+        lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+        lean_ctor_set(r, 0, session);
+        return lean_io_result_mk_ok(r);
+    }
+
+    int err = SSL_get_error(ssl, ret);
+    if (err == SSL_ERROR_WANT_READ) {
+        SSL_free(ssl);
+        return lean_io_result_mk_ok(lean_alloc_ctor(1, 0, 0));
+    }
+    if (err == SSL_ERROR_WANT_WRITE) {
+        SSL_free(ssl);
+        return lean_io_result_mk_ok(lean_alloc_ctor(2, 0, 0));
+    }
+    /* Real error */
+    lean_obj_res e = mk_tls_ssl_error(ssl, ret);
+    SSL_free(ssl);
+    lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+    lean_ctor_set(r, 0, e);
+    return lean_io_result_mk_ok(r);
+}
+
+/**
+ * Non-blocking TLS read.
+ * Returns TLSOutcome ByteArray.
+ */
+LEAN_EXPORT lean_obj_res hale_tls_read_nb(
+    b_lean_obj_arg ssl_obj,
+    size_t maxlen,
+    lean_obj_arg world
+) {
+    hale_ssl_t *wrapper = lean_get_external_data(ssl_obj);
+    if (!wrapper->ssl) {
+        lean_obj_res err = mk_tls_io_error("TLS read on closed session");
+        lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+
+    lean_obj_res arr = lean_mk_empty_byte_array(lean_box(maxlen));
+    uint8_t *buf = lean_sarray_cptr(arr);
+
+    int n = SSL_read(wrapper->ssl, buf, (int)maxlen);
+    if (n > 0) {
+        lean_sarray_set_size(arr, n);
+        lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+        lean_ctor_set(r, 0, arr);
+        return lean_io_result_mk_ok(r);
+    }
+
+    lean_dec(arr);
+    int err = SSL_get_error(wrapper->ssl, n);
+    if (err == SSL_ERROR_WANT_READ) {
+        return lean_io_result_mk_ok(lean_alloc_ctor(1, 0, 0));
+    }
+    if (err == SSL_ERROR_WANT_WRITE) {
+        return lean_io_result_mk_ok(lean_alloc_ctor(2, 0, 0));
+    }
+    if (err == SSL_ERROR_ZERO_RETURN) {
+        /* Peer closed — return empty ByteArray as .ok */
+        lean_obj_res empty = lean_mk_empty_byte_array(lean_box(0));
+        lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+        lean_ctor_set(r, 0, empty);
+        return lean_io_result_mk_ok(r);
+    }
+    lean_obj_res e = mk_tls_ssl_error(wrapper->ssl, n);
+    lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+    lean_ctor_set(r, 0, e);
+    return lean_io_result_mk_ok(r);
+}
+
+/**
+ * Non-blocking TLS write.
+ * Returns TLSOutcome Unit.
+ * Note: returns .ok with bytes written count for partial writes.
+ */
+LEAN_EXPORT lean_obj_res hale_tls_write_nb(
+    b_lean_obj_arg ssl_obj,
+    b_lean_obj_arg data_obj,
+    lean_obj_arg world
+) {
+    hale_ssl_t *wrapper = lean_get_external_data(ssl_obj);
+    if (!wrapper->ssl) {
+        lean_obj_res err = mk_tls_io_error("TLS write on closed session");
+        lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+
+    size_t len = lean_sarray_size(data_obj);
+    const uint8_t *buf = lean_sarray_cptr(data_obj);
+
+    int n = SSL_write(wrapper->ssl, buf, (int)len);
+    if (n > 0) {
+        /* .ok Unit */
+        lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+        lean_ctor_set(r, 0, lean_box(0));
+        return lean_io_result_mk_ok(r);
+    }
+
+    int err = SSL_get_error(wrapper->ssl, n);
+    if (err == SSL_ERROR_WANT_READ) {
+        return lean_io_result_mk_ok(lean_alloc_ctor(1, 0, 0));
+    }
+    if (err == SSL_ERROR_WANT_WRITE) {
+        return lean_io_result_mk_ok(lean_alloc_ctor(2, 0, 0));
+    }
+    lean_obj_res e = mk_tls_ssl_error(wrapper->ssl, n);
+    lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+    lean_ctor_set(r, 0, e);
+    return lean_io_result_mk_ok(r);
+}
+
+/* ────────────────────────────────────────────────────────────
  * TLS introspection
  * ──────────────────────────────────────────────────────────── */
 
@@ -340,4 +518,170 @@ LEAN_EXPORT lean_obj_res hale_tls_get_alpn(
         return lean_io_result_mk_ok(({lean_obj_res opt = lean_alloc_ctor(1, 1, 0); lean_ctor_set(opt, 0, s); opt;}));
     }
     return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* ────────────────────────────────────────────────────────────
+ * TLS client-side support
+ *
+ * For outgoing HTTPS connections: client context creation
+ * (with system CA trust), and SSL_connect handshake with SNI.
+ * ──────────────────────────────────────────────────────────── */
+
+/*
+ * @[extern "hale_tls_client_ctx_create"]
+ * opaque createClientContext : IO TLSContext
+ *
+ * Creates an SSL_CTX configured for TLS client mode.
+ * Loads system default CA certificates for server verification.
+ * No client certificate is configured (mutual TLS not supported yet).
+ */
+LEAN_EXPORT lean_obj_res hale_tls_client_ctx_create(
+    lean_obj_arg world
+) {
+    ensure_classes();
+
+    SSL_CTX *ctx = SSL_CTX_new(TLS_method());
+    if (!ctx) {
+        return lean_io_result_mk_error(mk_io_error("SSL_CTX_new (client) failed"));
+    }
+
+    /* Set minimum TLS version to 1.2 */
+    SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+
+    /* Load system default CA certificates for server verification */
+    if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
+        SSL_CTX_free(ctx);
+        return lean_io_result_mk_error(mk_io_error("Failed to load system CA certificates"));
+    }
+
+    /* Enable server certificate verification */
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+
+    hale_ssl_ctx_t *wrapper = malloc(sizeof(hale_ssl_ctx_t));
+    if (!wrapper) {
+        SSL_CTX_free(ctx);
+        return lean_io_result_mk_error(mk_io_error("malloc failed"));
+    }
+    wrapper->ctx = ctx;
+
+    lean_obj_res obj = lean_alloc_external(g_hale_ssl_ctx_class, wrapper);
+    return lean_io_result_mk_ok(obj);
+}
+
+/*
+ * @[extern "hale_tls_connect_socket"]
+ * opaque connectSocket : @& TLSContext → @& RawSocket → @& String → IO TLSSession
+ *
+ * Performs a blocking TLS client-side handshake on a connected socket.
+ * Sets SNI (Server Name Indication) from the hostname parameter.
+ */
+LEAN_EXPORT lean_obj_res hale_tls_connect_socket(
+    b_lean_obj_arg ctx_obj,
+    b_lean_obj_arg sock_obj,
+    b_lean_obj_arg hostname_obj,
+    lean_obj_arg world
+) {
+    int fd = (int)(intptr_t)lean_get_external_data(sock_obj);
+    const char *hostname = lean_string_cstr(hostname_obj);
+    ensure_classes();
+
+    hale_ssl_ctx_t *ctx_wrapper = lean_get_external_data(ctx_obj);
+    SSL *ssl = SSL_new(ctx_wrapper->ctx);
+    if (!ssl) {
+        return lean_io_result_mk_error(mk_io_error("SSL_new failed"));
+    }
+
+    SSL_set_fd(ssl, fd);
+
+    /* Set SNI hostname for virtual hosting */
+    SSL_set_tlsext_host_name(ssl, hostname);
+
+    /* Set hostname for certificate verification (OpenSSL 1.1+) */
+    SSL_set1_host(ssl, hostname);
+
+    int ret = SSL_connect(ssl);
+    if (ret != 1) {
+        int err = SSL_get_error(ssl, ret);
+        SSL_free(ssl);
+        char msg[256];
+        snprintf(msg, sizeof(msg), "SSL_connect failed (error %d)", err);
+        return lean_io_result_mk_error(mk_io_error(msg));
+    }
+
+    hale_ssl_t *wrapper = malloc(sizeof(hale_ssl_t));
+    if (!wrapper) {
+        SSL_free(ssl);
+        return lean_io_result_mk_error(mk_io_error("malloc failed"));
+    }
+    wrapper->ssl = ssl;
+    wrapper->fd = fd;
+
+    lean_obj_res obj = lean_alloc_external(g_hale_ssl_class, wrapper);
+    return lean_io_result_mk_ok(obj);
+}
+
+/*
+ * @[extern "hale_tls_connect_socket_nb"]
+ * opaque connectSocketNB : @& TLSContext → @& RawSocket → @& String
+ *                        → IO (TLSOutcome TLSSession)
+ *
+ * Non-blocking TLS client handshake. Returns TLSOutcome.
+ */
+LEAN_EXPORT lean_obj_res hale_tls_connect_socket_nb(
+    b_lean_obj_arg ctx_obj,
+    b_lean_obj_arg sock_obj,
+    b_lean_obj_arg hostname_obj,
+    lean_obj_arg world
+) {
+    int fd = (int)(intptr_t)lean_get_external_data(sock_obj);
+    const char *hostname = lean_string_cstr(hostname_obj);
+    ensure_classes();
+
+    hale_ssl_ctx_t *ctx_wrapper = lean_get_external_data(ctx_obj);
+    SSL *ssl = SSL_new(ctx_wrapper->ctx);
+    if (!ssl) {
+        lean_obj_res err = mk_tls_io_error("SSL_new failed");
+        lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+        lean_ctor_set(r, 0, err);
+        return lean_io_result_mk_ok(r);
+    }
+
+    SSL_set_fd(ssl, fd);
+    SSL_set_tlsext_host_name(ssl, hostname);
+    SSL_set1_host(ssl, hostname);
+
+    int ret = SSL_connect(ssl);
+    if (ret == 1) {
+        /* Handshake complete */
+        hale_ssl_t *wrapper = malloc(sizeof(hale_ssl_t));
+        if (!wrapper) {
+            SSL_free(ssl);
+            lean_obj_res err = mk_tls_io_error("malloc failed");
+            lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+            lean_ctor_set(r, 0, err);
+            return lean_io_result_mk_ok(r);
+        }
+        wrapper->ssl = ssl;
+        wrapper->fd = fd;
+        lean_obj_res session = lean_alloc_external(g_hale_ssl_class, wrapper);
+        lean_obj_res r = lean_alloc_ctor(0, 1, 0);
+        lean_ctor_set(r, 0, session);
+        return lean_io_result_mk_ok(r);
+    }
+
+    int err = SSL_get_error(ssl, ret);
+    if (err == SSL_ERROR_WANT_READ) {
+        SSL_free(ssl);
+        return lean_io_result_mk_ok(lean_alloc_ctor(1, 0, 0));
+    }
+    if (err == SSL_ERROR_WANT_WRITE) {
+        SSL_free(ssl);
+        return lean_io_result_mk_ok(lean_alloc_ctor(2, 0, 0));
+    }
+    /* Real error */
+    lean_obj_res e = mk_tls_ssl_error(ssl, ret);
+    SSL_free(ssl);
+    lean_obj_res r = lean_alloc_ctor(3, 1, 0);
+    lean_ctor_set(r, 0, e);
+    return lean_io_result_mk_ok(r);
 }

@@ -104,6 +104,11 @@ import Tests.Http3.TestFrame
 import Tests.Http3.TestQPACK
 -- WarpQUIC
 import Tests.WarpQUIC.TestWarpQUIC
+-- HttpClient
+import Tests.HttpClient.TestRequest
+import Tests.HttpClient.TestResponse
+-- Req
+import Tests.Req.TestReq
 
 open Tests
 
@@ -180,6 +185,10 @@ def main : IO UInt32 := do
     , ("Http3.QPACK",     TestQPACK.tests)
     -- WarpQUIC
     , ("WarpQUIC",        TestWarpQUIC.tests)
+    -- HttpClient
+    , ("HttpClient.Request", TestRequest.tests)
+    -- Req
+    , ("Req",             TestReq.tests)
     ]
 
   for (name, tests) in suites do
@@ -207,6 +216,7 @@ def main : IO UInt32 := do
   totalFailures := totalFailures + (← runIO "AutoUpdate"  fun () => TestAutoUpdate.tests)
   totalFailures := totalFailures + (← runIO "TimeManager" fun () => TestTimeManager.tests)
   totalFailures := totalFailures + (← runIO "WAI Smoke"  fun () => TestWaiSmoke.tests)
+  totalFailures := totalFailures + (← runIO "HttpClient.Response" fun () => TestResponse.tests)
   -- Concurrency + network IO tests — use dedicated OS threads to avoid pool starvation.
   -- These tests call IO.wait on tasks spawned with IO.asTask (.dedicated).
   -- Currently segfault in compiled mode (exit 139) — needs further investigation.

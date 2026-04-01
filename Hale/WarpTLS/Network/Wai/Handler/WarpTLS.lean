@@ -2,11 +2,7 @@
   Hale.WarpTLS.Network.Wai.Handler.WarpTLS — HTTPS support for Warp
 
   Provides TLS (HTTPS) support for the Warp HTTP server using OpenSSL via FFI.
-
-  ## Design
-
-  `runTLS` creates an OpenSSL context with the given cert/key, then runs
-  the standard Warp accept loop with TLS handshake on each connection.
+  Uses the EventDispatcher and Green monad for non-blocking I/O.
 
   ## Guarantees
 
@@ -21,6 +17,7 @@ import Hale.Network
 import Hale.TLS
 import Hale.Warp
 import Hale.Base.Control.Concurrent
+import Hale.Base.Control.Concurrent.Green
 
 namespace Network.Wai.Handler.WarpTLS
 
@@ -29,6 +26,7 @@ open Network.HTTP.Types
 open Network.Socket
 open Network.TLS
 open Network.Wai.Handler.Warp
+open Control.Concurrent.Green (Green)
 
 /-- How to handle non-TLS (plain HTTP) connections. -/
 inductive OnInsecure where
@@ -47,18 +45,18 @@ structure TLSSettings where
   onInsecure : OnInsecure := .denyInsecure "This server requires HTTPS"
   alpn : Bool := true
 
-/-- Handle a single TLS connection: perform handshake, then run HTTP. -/
+/-- Handle a single TLS connection using the EventDispatcher. -/
 private partial def tlsConnection (ctx : TLSContext) (clientSock : Socket .connected)
-    (remoteAddr : SockAddr) (settings : Settings) (app : Application) : IO Unit := do
+    (remoteAddr : SockAddr) (settings : Settings) (app : Application)
+    (disp : EventDispatcher) : Green Unit := do
   try
-    -- Perform TLS handshake
-    let session ← Network.TLS.acceptSocket ctx clientSock.raw
+    let session ← (Network.TLS.acceptSocket ctx clientSock.raw : IO _)
     try
-      -- Use the RecvBuffer for HTTP parsing (reads from raw socket, TLS decrypts)
-      let buf ← FFI.recvBufCreate clientSock.raw
+      let buf ← (FFI.recvBufCreate clientSock.raw : IO _)
       let mut keepGoing := true
       while keepGoing do
-        let reqOpt ← parseRequest buf remoteAddr
+        disp.waitReadable clientSock
+        let reqOpt ← (parseRequest buf remoteAddr : IO _)
         match reqOpt with
         | none => keepGoing := false
         | some req =>
@@ -68,25 +66,29 @@ private partial def tlsConnection (ctx : TLSContext) (clientSock : Socket .conne
             let resp' := if action == .close then
               resp.mapResponseHeaders ((hConnection, "close") :: ·)
             else resp
-            sendResponse clientSock settings secureReq resp').run
+            sendResponseEL clientSock settings secureReq resp' disp).run
           if action != .keepAlive then keepGoing := false
     finally
-      Network.TLS.close session
+      (Network.TLS.close session : IO _)
   catch e =>
-    settings.settingsOnException (some remoteAddr)
-    IO.eprintln s!"WarpTLS: connection error from {remoteAddr}: {e}"
+    (settings.settingsOnException (some remoteAddr) : IO _)
+    (IO.eprintln s!"WarpTLS: connection error from {remoteAddr}: {e}" : IO _)
   finally
-    let _ ← Network.Socket.close clientSock
+    let _ ← (Network.Socket.close clientSock : IO _)
 
-/-- Accept loop for TLS connections. -/
+/-- Accept loop for TLS connections using the EventDispatcher. -/
 private partial def tlsAcceptLoop (ctx : TLSContext) (serverSock : Socket .listening)
-    (settings : Settings) (app : Application) : IO Unit := do
-  let (clientSock, remoteAddr) ← Network.Socket.accept serverSock
-  let _tid ← Control.Concurrent.forkIO (tlsConnection ctx clientSock remoteAddr settings app)
-  tlsAcceptLoop ctx serverSock settings app
+    (settings : Settings) (app : Application) (disp : EventDispatcher) : Green Unit := do
+  while true do
+    disp.waitReadable serverSock
+    match ← (Network.Socket.accept serverSock : IO _) with
+    | .accepted clientSock remoteAddr =>
+      let _ ← (Control.Concurrent.forkGreen
+        (tlsConnection ctx clientSock remoteAddr settings app disp) : IO _)
+    | .wouldBlock => pure ()
+    | .error _ => pure ()
 
-/-- Run a WAI application with TLS on the given port.
-    $$\text{runTLS} : \text{TLSSettings} \to \text{Settings} \to \text{Application} \to \text{IO Unit}$$ -/
+/-- Run a WAI application with TLS on the given port. -/
 partial def runTLS (tlsSettings : TLSSettings) (settings : Settings)
     (app : Application) : IO Unit := do
   let (certPath, keyPath) := match tlsSettings.certSettings with
@@ -96,10 +98,14 @@ partial def runTLS (tlsSettings : TLSSettings) (settings : Settings)
     Network.TLS.setAlpn ctx
   let serverSock ← Network.Socket.listenTCP
     settings.settingsHost settings.settingsPort settings.settingsBacklog
+  Network.Socket.setNonBlocking serverSock
+  let disp ← EventDispatcher.create
+  let token ← Std.CancellationToken.new
   try
     settings.settingsBeforeMainLoop
-    tlsAcceptLoop ctx serverSock settings app
+    Green.block (tlsAcceptLoop ctx serverSock settings app disp) token
   finally
+    disp.shutdown
     let _ ← Network.Socket.close serverSock
 
 end Network.Wai.Handler.WarpTLS

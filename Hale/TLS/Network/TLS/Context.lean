@@ -70,4 +70,46 @@ opaque getVersion (session : @& TLSSession) : IO String
 @[extern "hale_tls_get_alpn"]
 opaque getAlpn (session : @& TLSSession) : IO (Option String)
 
+-- ── Non-blocking TLS operations ──
+
+/-- Non-blocking TLS handshake. Returns `TLSOutcome TLSSession`.
+    On `.wantRead`/`.wantWrite`, wait for socket readiness then retry.
+    $$\text{acceptSocketNB} : \text{TLSContext} \to \text{RawSocket} \to \text{IO (TLSOutcome TLSSession)}$$ -/
+@[extern "hale_tls_accept_socket_nb"]
+opaque acceptSocketNB (ctx : @& TLSContext) (sock : @& Network.Socket.RawSocket)
+    : IO (TLSOutcome TLSSession)
+
+/-- Non-blocking TLS read. Returns `TLSOutcome ByteArray`.
+    $$\text{readNB} : \text{TLSSession} \to \text{USize} \to \text{IO (TLSOutcome ByteArray)}$$ -/
+@[extern "hale_tls_read_nb"]
+opaque readNB (session : @& TLSSession) (maxLen : USize) : IO (TLSOutcome ByteArray)
+
+/-- Non-blocking TLS write. Returns `TLSOutcome Unit`.
+    $$\text{writeNB} : \text{TLSSession} \to \text{ByteArray} \to \text{IO (TLSOutcome Unit)}$$ -/
+@[extern "hale_tls_write_nb"]
+opaque writeNB (session : @& TLSSession) (data : @& ByteArray) : IO (TLSOutcome Unit)
+
+-- ── Client-side TLS ──
+
+/-- Create a TLS client context with system CA trust for server verification.
+    No client certificate needed. Used for outgoing HTTPS connections.
+    $$\text{createClientContext} : \text{IO TLSContext}$$ -/
+@[extern "hale_tls_client_ctx_create"]
+opaque createClientContext : IO TLSContext
+
+/-- Perform a blocking TLS client handshake on a connected socket.
+    Sets SNI (Server Name Indication) from the hostname.
+    The server's certificate is verified against system CA trust store.
+    $$\text{connectSocket} : \text{TLSContext} \to \text{RawSocket} \to \text{String} \to \text{IO TLSSession}$$ -/
+@[extern "hale_tls_connect_socket"]
+opaque connectSocket (ctx : @& TLSContext) (sock : @& Network.Socket.RawSocket)
+    (hostname : @& String) : IO TLSSession
+
+/-- Non-blocking TLS client handshake. Returns `TLSOutcome TLSSession`.
+    On `.wantRead`/`.wantWrite`, wait for socket readiness then retry.
+    $$\text{connectSocketNB} : \text{TLSContext} \to \text{RawSocket} \to \text{String} \to \text{IO (TLSOutcome TLSSession)}$$ -/
+@[extern "hale_tls_connect_socket_nb"]
+opaque connectSocketNB (ctx : @& TLSContext) (sock : @& Network.Socket.RawSocket)
+    (hostname : @& String) : IO (TLSOutcome TLSSession)
+
 end Network.TLS

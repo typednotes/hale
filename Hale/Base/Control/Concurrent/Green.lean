@@ -197,6 +197,16 @@ instance : MonadExcept IO.Error Green where
   throw := Green.throw
   tryCatch := Green.tryCatch
 
+instance : MonadFinally Green where
+  tryFinally' x f := fun token =>
+    GreenBase.bind (x token) fun
+      | .ok a => GreenBase.bind (f (some a) token) fun
+          | .ok b => GreenBase.pure (.ok (a, b))
+          | .error e => GreenBase.pure (.error e)
+      | .error e => GreenBase.bind (f none token) fun
+          | .ok _ => GreenBase.pure (.error e)
+          | .error e2 => GreenBase.pure (.error e2)
+
 instance : MonadLift IO Green where
   monadLift action := fun _token => ⟨do
     match ← action.toBaseIO with

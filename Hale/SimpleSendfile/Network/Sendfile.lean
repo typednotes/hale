@@ -46,7 +46,7 @@ def sendFile (sock : Socket .connected) (path : String) (part : Option FilePart 
       let chunkSize := min remaining 65536
       let data ← handle.read chunkSize.toUSize
       if data.size == 0 then break
-      let _ ← Network.Socket.send sock data
+      Blocking.sendAll sock data
       remaining := remaining - data.size
   | none => do
     -- Send entire file in chunks
@@ -56,7 +56,7 @@ def sendFile (sock : Socket .connected) (path : String) (part : Option FilePart 
       if data.size == 0 then
         done := true
       else
-        let _ ← Network.Socket.send sock data
+        Blocking.sendAll sock data
 
 /-- Send an entire file over a connected socket.
     $$\text{sendFileSimple} : \text{Socket}\ \texttt{.connected} \to \text{String} \to \text{IO}(\text{Unit})$$ -/

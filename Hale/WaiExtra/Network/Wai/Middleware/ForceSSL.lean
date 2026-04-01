@@ -24,7 +24,8 @@ def forceSSL : Middleware :=
 
 /-- Secure requests pass through the forceSSL middleware unchanged.
     $$\forall\, \text{req},\; \text{req.isSecure} = \text{true} \implies \text{forceSSL}(\text{app}, \text{req}) = \text{app}(\text{req})$$ -/
-theorem forceSSL_secure (app : Application) (req : Request) (respond : Response → IO ResponseReceived)
+theorem forceSSL_secure (app : Application) (req : Request)
+    (respond : Response → Control.Concurrent.Green.Green ResponseReceived)
     (h : req.isSecure = true) :
     forceSSL app req respond = app req respond := by
   simp [forceSSL, h]

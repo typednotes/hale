@@ -34,17 +34,17 @@ def tests : IO (List TestResult) := do
   -- Spawn client in background task
   let clientTask ← IO.asTask (prio := .dedicated) do
     let client ← socket .inet .stream
-    let client ← connect client ⟨"127.0.0.1", 9876⟩
-    let _ ← Network.Socket.send client "hello".toUTF8
-    let response ← Network.Socket.recv client 1024
+    let client ← Blocking.connect client ⟨"127.0.0.1", 9876⟩
+    let _ ← Blocking.send client "hello".toUTF8
+    let response ← Blocking.recv client 1024
     let _ ← close client
     pure (String.fromUTF8! response)
 
   -- Accept on server side (returns Socket .connected)
-  let (conn, _remoteAddr) ← accept server
-  let data ← Network.Socket.recv conn 1024
+  let (conn, _remoteAddr) ← Blocking.accept server
+  let data ← Blocking.recv conn 1024
   let received := String.fromUTF8! data
-  let _ ← Network.Socket.send conn "world".toUTF8
+  let _ ← Blocking.send conn "world".toUTF8
   let _ ← close conn
   let _ ← close server
 

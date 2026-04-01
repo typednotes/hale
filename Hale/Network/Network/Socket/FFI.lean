@@ -182,9 +182,58 @@ opaque getSockNamePort (sock : @& RawSocket) : IO UInt16
 -- ── DNS resolution ──
 
 /-- Resolve a hostname. Returns list of `(family, (host, port))`.
-    $$\text{getAddrInfo} : \text{String} \to \text{String} \to \text{IO}(\text{List}(\text{USize} \times (\text{String} \times \text{USize})))$$ -/
+    Uses `Nat` instead of `USize` in product fields for compiled-mode ABI safety.
+    $$\text{getAddrInfo} : \text{String} \to \text{String} \to \text{IO}(\text{List}(\text{Nat} \times (\text{String} \times \text{Nat})))$$ -/
 @[extern "hale_getaddrinfo"]
-opaque getAddrInfo (node : @& String) (service : @& String) : IO (List (USize × String × USize))
+opaque getAddrInfo (node : @& String) (service : @& String) : IO (List (Nat × String × Nat))
+
+-- ── Non-blocking socket operations ──
+-- Return outcome sum types instead of throwing on EAGAIN/EWOULDBLOCK.
+
+/-- Non-blocking accept. Returns `AcceptOutcome` (tagged union from C).
+    $$\text{socketAcceptNB} : \text{Socket} \to \text{IO AcceptOutcome}$$ -/
+@[extern "hale_socket_accept_nb"]
+opaque socketAcceptNB (sock : @& RawSocket) : IO AcceptOutcome
+
+/-- Non-blocking connect. Sets O_NONBLOCK, returns `ConnectOutcome`.
+    $$\text{socketConnectNB} : \text{Socket} \to \text{String} \to \text{UInt16} \to \text{IO ConnectOutcome}$$ -/
+@[extern "hale_socket_connect_nb"]
+opaque socketConnectNB (sock : @& RawSocket) (host : @& String) (port : UInt16) : IO ConnectOutcome
+
+/-- Check non-blocking connect result (after writable event).
+    $$\text{socketConnectFinish} : \text{Socket} \to \text{IO ConnectOutcome}$$ -/
+@[extern "hale_socket_connect_finish"]
+opaque socketConnectFinish (sock : @& RawSocket) : IO ConnectOutcome
+
+/-- Non-blocking send. Returns `SendOutcome`.
+    $$\text{socketSendNB} : \text{Socket} \to \text{ByteArray} \to \text{IO SendOutcome}$$ -/
+@[extern "hale_socket_send_nb"]
+opaque socketSendNB (sock : @& RawSocket) (data : @& ByteArray) : IO SendOutcome
+
+/-- Non-blocking recv. Returns `RecvOutcome`.
+    $$\text{socketRecvNB} : \text{Socket} \to \text{USize} \to \text{IO RecvOutcome}$$ -/
+@[extern "hale_socket_recv_nb"]
+opaque socketRecvNB (sock : @& RawSocket) (maxlen : USize) : IO RecvOutcome
+
+/-- Extract the raw file descriptor from a socket handle. For EventLoop correlation.
+    Returns a Nat (boxed) to avoid compiled-mode ABI issues with `IO USize`.
+    $$\text{socketGetFd} : \text{Socket} \to \text{IO Nat}$$ -/
+@[extern "hale_socket_get_fd"]
+opaque socketGetFd (sock : @& RawSocket) : IO Nat
+
+-- ── Non-blocking RecvBuffer operations ──
+
+/-- Non-blocking readline. Returns `none` on EAGAIN, `some line` when complete.
+    Partial line state is preserved in the buffer between calls.
+    $$\text{recvBufReadLineNB} : \text{RecvBuffer} \to \text{IO (Option String)}$$ -/
+@[extern "hale_recvbuf_readline_nb"]
+opaque recvBufReadLineNB (buf : @& RecvBuffer) : IO (Option String)
+
+/-- Non-blocking readn. Returns `(data, complete)` where complete indicates
+    all n bytes were read.
+    $$\text{recvBufReadNNB} : \text{RecvBuffer} \to \text{USize} \to \text{IO (ByteArray × Bool)}$$ -/
+@[extern "hale_recvbuf_readn_nb"]
+opaque recvBufReadNNB (buf : @& RecvBuffer) (n : USize) : IO (ByteArray × Bool)
 
 -- ── Event multiplexing (kqueue/epoll) ──
 
@@ -203,11 +252,13 @@ opaque eventLoopAdd (loop : @& EventLoop) (sock : @& RawSocket) (events : USize)
 @[extern "hale_event_loop_del"]
 opaque eventLoopDel (loop : @& EventLoop) (sock : @& RawSocket) : IO Unit
 
-/-- Wait for events. Returns `List (fd × events)`.
+/-- Wait for events. Returns `List (fd × events)` where both are `Nat` (boxed).
+    Uses `Nat` instead of `USize` to avoid compiled-mode ABI issues with scalar
+    types in polymorphic ctor fields.
     timeout is in milliseconds; pass a very large value for indefinite blocking.
-    $$\text{eventLoopWait} : \text{EventLoop} \to \text{USize} \to \text{IO}(\text{List}(\text{USize} \times \text{USize}))$$ -/
+    $$\text{eventLoopWait} : \text{EventLoop} \to \text{USize} \to \text{IO}(\text{List}(\text{Nat} \times \text{Nat}))$$ -/
 @[extern "hale_event_loop_wait"]
-opaque eventLoopWait (loop : @& EventLoop) (timeoutMs : USize) : IO (List (USize × USize))
+opaque eventLoopWait (loop : @& EventLoop) (timeoutMs : USize) : IO (List (Nat × Nat))
 
 /-- Close the event loop. The fd is also closed by the GC finalizer, but
     explicit close is preferred for deterministic resource release.

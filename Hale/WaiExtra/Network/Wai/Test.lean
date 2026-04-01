@@ -6,11 +6,13 @@
 -/
 import Hale.WAI
 import Hale.HttpTypes
+import Hale.Base.Control.Concurrent.Green
 
 namespace Network.Wai.Test
 
 open Network.Wai
 open Network.HTTP.Types
+open Control.Concurrent.Green (Green)
 
 /-- A simulated request for testing. -/
 structure SRequest where
@@ -52,16 +54,18 @@ def toWaiRequest (sreq : SRequest) : Request :=
   }
 
 /-- Run a WAI Application with a simulated request and capture the response.
+    Runs the Green computation via `Green.block`.
     $$\text{runSession} : \text{Application} \to \text{SRequest} \to \text{IO SResponse}$$ -/
 def runSession (app : Application) (sreq : SRequest) : IO SResponse := do
   let waiReq := toWaiRequest sreq
   let resultRef ← IO.mkRef (none : Option SResponse)
-  let _received ← (app waiReq fun resp => do
+  let token ← Std.CancellationToken.new
+  let _received ← Green.block (app waiReq fun resp => do
     let body := match resp with
       | .responseBuilder _ _ b => b
       | _ => ByteArray.empty  -- File/stream responses return empty in test
-    resultRef.set (some ⟨resp.status, resp.headers, body⟩)
-    return ResponseReceived.done).run
+    (resultRef.set (some ⟨resp.status, resp.headers, body⟩) : IO _)
+    return ResponseReceived.done).run token
   match ← resultRef.get with
   | some r => return r
   | none => throw (IO.Error.userError "Application did not call respond")

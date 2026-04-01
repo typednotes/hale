@@ -17,8 +17,8 @@ def tests : IO (List TestResult) := do
   let server ← bindPortTCP 9877 "127.0.0.1"
   let clientTask ← IO.asTask (prio := .dedicated) do
     let (sock, _) ← getSocketTCP "127.0.0.1" 9877
-    let _ ← Network.Socket.send sock "ping".toUTF8
-    let resp ← Network.Socket.recv sock 1024
+    let _ ← Network.Socket.Blocking.send sock "ping".toUTF8
+    let resp ← Network.Socket.Blocking.recv sock 1024
     let _ ← Network.Socket.close sock
     pure (String.fromUTF8! resp)
   let (clientSock, addr) ← acceptSafe server

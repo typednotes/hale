@@ -6,8 +6,10 @@
 
 The POSIX socket API is a state machine. A socket must be created, then
 bound, then set to listen, before it can accept connections. Calling
-operations in the wrong order — `send` on an unbound socket, `accept`
-before `listen`, `close` twice — is undefined behaviour in C.
+operations in the wrong order — `send` on an unconnected socket, `accept`
+before `listen`, `close` twice — returns an error code that nothing
+forces you to check, and double-close can silently destroy another
+thread's file descriptor.
 
 Every production socket library deals with this in one of three ways:
 
@@ -179,11 +181,33 @@ Uncomment `bad_double_close` or
 `bad_send_fresh` and the kernel rejects the program immediately — the
 error messages tell you exactly which state transition is invalid.
 
+## What this does not capture
+
+This state machine models the *programmatic* protocol — what operations
+you have called — not the *OS-level* state of the socket. The real world
+is messier:
+
+- **Non-blocking `connect`** returns `EINPROGRESS` while the TCP
+  handshake is in flight. The socket is neither `.fresh` nor
+  `.connected` — it is *connecting*. A real non-blocking API would need
+  a `.connecting` state and a resolution step (`pollConnect`).
+- **Peer disconnect** can happen at any time. A `Socket .connected` may
+  be broken underneath; you only discover this when `send`/`recv`
+  returns an error. The type guarantees the call is *legal to attempt*,
+  not that it will *succeed* — that is what `IO` encodes.
+- **Half-close** via `shutdown(SHUT_WR)` leaves a socket readable but
+  not writable. The five-state model has no way to express this.
+
+In short, the type-level state machine is sound for **blocking sockets
+on the happy path**. For a production non-blocking server, richer states
+and an `IO`-based resolution protocol would be needed — a topic for a
+future post.
+
 ## The punchline
 
 | Approach | Lines of state-checking code | Runtime cost | Catches at |
 |----------|------|------|------|
-| C (man page) | 0 | 0 | never (UB) |
+| C (man page) | 0 | 0 | never (silent error) |
 | Python (runtime) | ~50 | branch per call | runtime |
 | Rust (typestate) | ~30 | 0 | compile-time |
 | **Lean 4 (dependent types)** | **0** | **0** | **compile-time** |
