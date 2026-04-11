@@ -38,12 +38,6 @@ where
   typeOrder : Value → Nat
     | .bool _ => 0 | .int _ => 1 | .float _ => 2 | .str _ => 3 | .null => 4
 
-/-- Build an array of row indices. -/
-private def rowIndices (n : Nat) : Array Nat := Id.run do
-  let mut arr := Array.mkEmpty n
-  for i in [:n] do arr := arr.push i
-  arr
-
 /-- Get the value at (row, colIndex) from a DataFrame. -/
 private def getValueAt (df : DataFrame) (row : Nat) (colIdx : Nat) : Value :=
   if h1 : colIdx < df.columns.size then
@@ -52,30 +46,33 @@ private def getValueAt (df : DataFrame) (row : Nat) (colIdx : Nat) : Value :=
     else .null
   else .null
 
+/-- Reorder all columns of a DataFrame by a permutation of row indices. -/
+private def reindexColumns (df : DataFrame) (sortedIdx : Array Nat)
+    (hsize : sortedIdx.size = df.nRows) : DataFrame :=
+  { columns := df.columns.map fun col =>
+      { col with values := sortedIdx.map fun idx =>
+          if h : idx < col.values.size then col.values[idx] else .null }
+  , nRows := df.nRows
+  , columns_aligned := DataFrame.map_column_aligned df.columns df.nRows _
+      (fun _ => Array.size_map.trans hsize) }
+
 /-- Sort a DataFrame by a single column.
     $$\text{sortBy} : \text{DataFrame} \to \text{String} \to \text{SortOrder} \to \text{DataFrame}$$ -/
 def DataFrame.sortBy (df : DataFrame) (colName : String) (order : SortOrder := .asc) : DataFrame :=
   match df.columns.findIdx? fun c => c.name == colName with
   | none => df  -- column not found, return unchanged
   | some colIdx =>
-    -- Build row index array, sort by the column values
-    let indices := rowIndices df.nRows
+    let indices := Array.range df.nRows
     let sorted := indices.toList.mergeSort fun i j =>
       let cmp := Value.compare (getValueAt df i colIdx) (getValueAt df j colIdx)
       match order with
       | .asc => cmp != .gt
       | .desc => cmp != .lt
     let sortedIdx := sorted.toArray
-    -- Reorder all columns according to sorted indices
-    let newCols := df.columns.map fun col =>
-      let newVals := sortedIdx.map fun idx =>
-        if h : idx < col.values.size then col.values[idx]
-        else .null
-      { col with values := newVals }
-    { columns := newCols
-    , nRows := df.nRows
-    , columns_aligned := by intro i h; sorry
-    }
+    have hsize : sortedIdx.size = df.nRows := by
+      show sorted.toArray.size = df.nRows
+      rw [List.size_toArray, List.length_mergeSort, Array.length_toList, Array.size_range]
+    reindexColumns df sortedIdx hsize
 
 /-- Sort by multiple columns (first column is primary sort key).
     $$\text{sortByMultiple} : \text{DataFrame} \to \text{List (String × SortOrder)} \to \text{DataFrame}$$ -/
@@ -85,7 +82,7 @@ def DataFrame.sortByMultiple (df : DataFrame) (specs : List (String × SortOrder
     (df.columns.findIdx? fun c => c.name == name).map fun idx => (idx, order)
   if colSpecs.isEmpty then df
   else
-    let indices := rowIndices df.nRows
+    let indices := Array.range df.nRows
     let sorted := indices.toList.mergeSort fun i j =>
       let rec cmpBy : List (Nat × SortOrder) → Bool
         | [] => true  -- equal by all keys
@@ -97,14 +94,9 @@ def DataFrame.sortByMultiple (df : DataFrame) (specs : List (String × SortOrder
           | .gt => order == .desc
       cmpBy colSpecs
     let sortedIdx := sorted.toArray
-    let newCols := df.columns.map fun col =>
-      let newVals := sortedIdx.map fun idx =>
-        if h : idx < col.values.size then col.values[idx]
-        else .null
-      { col with values := newVals }
-    { columns := newCols
-    , nRows := df.nRows
-    , columns_aligned := by intro i h; sorry
-    }
+    have hsize : sortedIdx.size = df.nRows := by
+      show sorted.toArray.size = df.nRows
+      rw [List.size_toArray, List.length_mergeSort, Array.length_toList, Array.size_range]
+    reindexColumns df sortedIdx hsize
 
 end DataFrame

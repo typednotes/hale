@@ -2,7 +2,7 @@ import Lake
 open System Lake DSL
 
 package hale where
-  version := v!"0.1.0"
+  version := v!"0.2.0"
   description := "Haskell-inspired libraries for Lean 4 with maximalist typing"
   keywords := #["haskell", "web-server", "warp", "http", "wai", "networking", "sockets", "dependent-types"]
   license := "Apache-2.0"

@@ -8,8 +8,8 @@
   The central guarantee is `DataFrame.columns_aligned`: a proof that every
   column has exactly `nRows` elements.  This proof is carried as a field on
   the structure and is erased at runtime (zero cost).  All smart constructors
-  discharge this obligation, so users never encounter `sorry` when building
-  frames from valid data.
+  discharge this obligation, so users never encounter unproven obligations
+  when building frames from valid data.
 
   ## Typing Guarantees
 
@@ -201,6 +201,18 @@ structure DataFrame where
 namespace DataFrame
 
 -- ----------------------------------------------------------
+-- Proof helpers
+-- ----------------------------------------------------------
+
+/-- When every column produced by `f` has `nRows` values, the mapped array
+    satisfies the alignment invariant. -/
+protected theorem map_column_aligned {α : Type} (src : Array α) (nRows : Nat)
+    (f : α → Column) (hf : ∀ a, (f a).values.size = nRows)
+    (i : Nat) (h : i < (src.map f).size) :
+    (src.map f)[i].values.size = nRows := by
+  rw [@Array.getElem_map _ _ f src i h]; exact hf _
+
+-- ----------------------------------------------------------
 -- Basic accessors
 -- ----------------------------------------------------------
 
@@ -274,12 +286,8 @@ def fromColumns (cols : Array Column) : Option DataFrame :=
       some {
         columns := cols
         nRows := nRows
-        columns_aligned := fun i hi => by
-          -- `allMatch` being true means every element satisfies the predicate.
-          -- We use `sorry` here because discharging `Array.all` into pointwise
-          -- proofs requires unfolding Array internals that are opaque in Lean 4.29.
-          -- TODO: replace with a proper proof when `Array.all_iff_forall` is stable.
-          sorry
+        columns_aligned := fun i hi =>
+          eq_of_beq ((Array.all_eq_true.mp hallMatch) i hi)
       }
     else none
 
@@ -290,22 +298,16 @@ def fromColumns (cols : Array Column) : Option DataFrame :=
     This constructor always succeeds and builds a valid `DataFrame`. -/
 def fromRows (header : Array String) (rows : Array (Array Value)) : DataFrame :=
   let nRows := rows.size
-  let cols : Array Column := Id.run do
-    let mut result : Array Column := #[]
-    for hj : j in [:header.size] do
-      let name := header[j]
+  {
+    columns := (Array.range header.size).map fun j =>
+      let name := if h : j < header.size then header[j] else ""
       let vals := rows.map fun row =>
         if h : j < row.size then row[j] else Value.null
-      result := result.push { name := name, values := vals, colType := ColumnType.mixed }
-    return result
-  {
-    columns := cols
+      { name := name, values := vals, colType := ColumnType.mixed : Column }
     nRows := nRows
     columns_aligned := fun i hi => by
-      -- Each column's values array is built via `rows.map`, which preserves size.
-      -- The proof requires unfolding the loop body, which is opaque.
-      -- TODO: prove that `(rows.map f).size = rows.size` composes with loop invariant.
-      sorry
+      simp only [Array.size_map, Array.size_range] at hi
+      simp only [Array.getElem_map, Array.getElem_range, Array.size_map]; rfl
   }
 
 /-- Construct from named column pairs.  Returns `none` if the arrays have

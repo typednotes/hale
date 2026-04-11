@@ -230,7 +230,8 @@ def parseCsv (content : String) (opts : CsvOptions := {}) : DataFrame :=
       Column.mk (if h : colIdx < colNames.size then colNames[colIdx] else s!"col{colIdx}") vals ct
     { columns
     , nRows
-    , columns_aligned := by intro i h; sorry }
+    , columns_aligned := fun i h =>
+        DataFrame.map_column_aligned (Array.range nCols) nRows _ (fun _ => Array.size_map) i h }
 
 /-- Read a CSV file into a DataFrame.
     $$\text{readCsv} : \text{FilePath} \to \text{CsvOptions} \to \text{IO DataFrame}$$ -/

@@ -34,6 +34,20 @@ private def getVal (df : DataFrame) (colIdx row : Nat) : Value :=
 private def nullRow (df : DataFrame) : Array Value :=
   df.columns.map fun _ => Value.null
 
+/-- Reindex a column by a set of row pairs (for join operations). -/
+private def reindexLeft (rowPairs : Array (Nat × Option Nat)) (nLeftRows : Nat) (col : Column) : Column :=
+  { col with values := rowPairs.map fun (li, _) =>
+      if li < nLeftRows then
+        if h : li < col.values.size then col.values[li] else .null
+      else .null }
+
+/-- Reindex a right column by a set of row pairs (for join operations). -/
+private def reindexRight (rowPairs : Array (Nat × Option Nat)) (col : Column) : Column :=
+  { col with values := rowPairs.map fun (_, ri?) =>
+      match ri? with
+      | some ri => if h : ri < col.values.size then col.values[ri] else .null
+      | none => .null }
+
 /-- Generic join implementation. -/
 private def joinImpl (left right : DataFrame) (on : List String) (how : JoinType) : DataFrame :=
   -- Find key column indices in both DataFrames
@@ -43,52 +57,45 @@ private def joinImpl (left right : DataFrame) (on : List String) (how : JoinType
     right.columns.findIdx? fun c => c.name == name
   -- Non-key columns from right (avoid duplicating key columns)
   let rightNonKeyCols := right.columns.filter fun c => !on.contains c.name
-  -- Build result rows
-  let (leftRows, rightRows) := Id.run do
-    let mut lRows : Array Nat := #[]          -- left row indices
-    let mut rRows : Array (Option Nat) := #[]  -- right row indices (none = null row)
+  -- Build result row pairs (left index, right index option)
+  let rowPairs : Array (Nat × Option Nat) := Id.run do
+    let mut result : Array (Nat × Option Nat) := #[]
     let mut rightMatched : Array Bool := Array.replicate right.nRows false
-    -- For each left row, find matching right rows
     for li in [:left.nRows] do
       let leftKey := extractKeyValues left leftKeyIdx.toArray li
       let mut matched := false
       for ri in [:right.nRows] do
         let rightKey := extractKeyValues right rightKeyIdx.toArray ri
         if leftKey == rightKey then
-          lRows := lRows.push li
-          rRows := rRows.push (some ri)
+          result := result.push (li, some ri)
           rightMatched := rightMatched.set! ri true
           matched := true
-      -- Left/outer join: include unmatched left rows
       if !matched && (how == .left || how == .outer) then
-        lRows := lRows.push li
-        rRows := rRows.push none
-    -- Right/outer join: include unmatched right rows
+        result := result.push (li, none)
     if how == .right || how == .outer then
       for ri in [:right.nRows] do
         if !rightMatched[ri]! then
-          lRows := lRows.push left.nRows  -- sentinel for "no left row"
-          rRows := rRows.push (some ri)
-    (lRows, rRows)
-  -- Build result columns
-  let nResultRows := leftRows.size
-  -- Left columns (all)
-  let leftResultCols := left.columns.map fun col =>
-    let vals := leftRows.map fun li =>
-      if li < left.nRows then
-        if h : li < col.values.size then col.values[li] else .null
-      else .null
-    { col with values := vals }
-  -- Right non-key columns
-  let rightResultCols := rightNonKeyCols.map fun col =>
-    let vals := rightRows.map fun ri? =>
-      match ri? with
-      | some ri => if h : ri < col.values.size then col.values[ri] else .null
-      | none => .null
-    { col with values := vals }
+          result := result.push (left.nRows, some ri)
+    result
+  let nResultRows := rowPairs.size
+  let leftResultCols := left.columns.map (reindexLeft rowPairs left.nRows)
+  let rightResultCols := rightNonKeyCols.map (reindexRight rowPairs)
   { columns := leftResultCols ++ rightResultCols
   , nRows := nResultRows
-  , columns_aligned := by intro i h; sorry
+  , columns_aligned := fun i h => by
+      have hlc : leftResultCols.size = left.columns.size := Array.size_map
+      have hrc : rightResultCols.size = rightNonKeyCols.size := Array.size_map
+      simp only [Array.size_append] at h
+      simp only [Array.getElem_append]
+      split
+      · rename_i hlt
+        exact DataFrame.map_column_aligned left.columns nResultRows
+          (reindexLeft rowPairs left.nRows) (fun _ => Array.size_map)
+          i (by rw [Array.size_map]; omega)
+      · rename_i hge
+        exact DataFrame.map_column_aligned rightNonKeyCols nResultRows
+          (reindexRight rowPairs) (fun _ => Array.size_map)
+          (i - leftResultCols.size) (by simp only [Array.size_map, Array.size_append] at *; omega)
   }
 
 /-- Join two DataFrames on shared key columns. -/

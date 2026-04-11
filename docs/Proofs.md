@@ -4,9 +4,8 @@
 
 **Total: 257 compile-time verified theorems across 52 files**
 
-All theorems are checked by the Lean 4 kernel at compile time. No `sorry`
-in production code (one `sorry` exists in `unsafeToPiece` for trusted-input
-constructor, documented as TODO).
+All theorems are checked by the Lean 4 kernel at compile time. The codebase
+is completely `sorry`-free — every proof obligation is fully discharged.
 
 ## Algebraic Laws
 

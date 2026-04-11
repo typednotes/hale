@@ -33,12 +33,21 @@ private partial def connectFinishLoop (s : Socket .connecting) : IO (Socket .con
   | .refused e => throw e
 
 /-- Blocking connect: loops until connected or an error occurs.
+
+    `Network.Socket.connect` delegates to `socketConnectNB`, which sets
+    `O_NONBLOCK` on the file descriptor.  After the connect loop finishes
+    we restore blocking mode so that subsequent send/recv and TLS
+    handshakes (`SSL_connect`) work correctly on a blocking fd.
+
     $$\text{connect} : \text{Socket .fresh} \to \text{SockAddr} \to \text{IO}(\text{Socket .connected})$$ -/
 partial def connect (s : Socket .fresh) (addr : SockAddr) : IO (Socket .connected) := do
-  match ← Network.Socket.connect s addr with
-  | .connected sock => pure sock
-  | .inProgress sock => connectFinishLoop sock
-  | .refused e => throw e
+  let sock ← match ← Network.Socket.connect s addr with
+    | .connected sock => pure sock
+    | .inProgress sock => connectFinishLoop sock
+    | .refused e => throw e
+  -- socketConnectNB sets O_NONBLOCK; restore blocking mode
+  Network.Socket.setNonBlocking sock false
+  pure sock
 
 /-- Blocking send: returns bytes sent, throws on error.
     $$\text{send} : \text{Socket .connected} \to \text{ByteArray} \to \text{IO Nat}$$ -/

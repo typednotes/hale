@@ -640,7 +640,7 @@ Before finalising any module, review for simplification:
 1. **Factor common patterns:** If two functions share >50% of their logic, extract a shared helper
 2. **Avoid redundant state copies:** Use `modify` over `get`/`set` when the entire state changes
 3. **Prefer `Std.Mutex.atomically` with direct state operations** over manual lock/unlock
-4. **Minimise `sorry` and `panic!`:** Every `sorry` must have a tracking comment; every `panic!` must be unreachable by construction
+4. **No `sorry` allowed:** The codebase is `sorry`-free and must stay that way. Every proof obligation must be discharged with a real proof. Use `DataFrame.map_column_aligned` or `Array.getElem_map`/`Array.size_map` patterns for DataFrame alignment proofs. Every `panic!` must be unreachable by construction
 
 ## Standard Test Porting Procedure
 
@@ -655,7 +655,7 @@ When porting a Haskell test, always ask: **can this test be expressed as a proof
 **Preference hierarchy:**
 1. **Proof in source** (theorem in the module) — strongest, covers all cases, verified at compile time
 2. **Runtime test in `Tests/`** — for IO, opaque primitives, or properties that are infeasible to prove
-3. **`sorry`-marked theorem** with tracking comment — for invariants that should be provable but aren't yet
+3. **No `sorry`** — all proof obligations must be fully discharged; `sorry` is forbidden in production code
 
 **Examples of tests that become proofs:**
 - "map id = id" → `theorem map_id (x : F α) : id <$> x = x := rfl`

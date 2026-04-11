@@ -49,15 +49,14 @@ def DataFrame.groupBy (df : DataFrame) (groupCols : List String) : GroupedDataFr
     -- Convert to GroupedDataFrame
     let mut result : Array (Array Value × DataFrame) := #[]
     for (keyVals, rowIndices) in groupMap do
-      let newCols := df.columns.map fun col =>
-        let newVals := rowIndices.map fun idx =>
-          if h : idx < col.values.size then col.values[idx]
-          else Value.null
-        { col with values := newVals }
       let subDf : DataFrame :=
-        { columns := newCols
+        { columns := df.columns.map fun col =>
+            { col with values := rowIndices.map fun idx =>
+                if h : idx < col.values.size then col.values[idx]
+                else Value.null }
         , nRows := rowIndices.size
-        , columns_aligned := by intro i h; sorry
+        , columns_aligned := DataFrame.map_column_aligned df.columns rowIndices.size _
+            (fun _ => Array.size_map)
         }
       result := result.push (keyVals, subDf)
     result
@@ -104,24 +103,35 @@ def GroupedDataFrame.aggregate (gdf : GroupedDataFrame) (specs : List (String ×
   let nGroups := gdf.groups.size
   -- Build key columns
   let keyArr := gdf.groupKeys.toArray
-  let keyCols := (Array.range keyArr.size).map fun idx =>
+  let mkKeyCol (idx : Nat) : Column :=
     let name := if h : idx < keyArr.size then keyArr[idx] else ""
     let vals := gdf.groups.map fun (keyVals, _) =>
-      if h : idx < keyVals.size then keyVals[idx]
-      else Value.null
+      if h : idx < keyVals.size then keyVals[idx] else Value.null
     Column.mk name vals .mixed
-  -- Build aggregated columns
-  let aggCols := specs.map fun (colName, aggFunc) =>
+  let mkAggCol (spec : String × AggFunc) : Column :=
+    let colName := spec.1
+    let aggFunc := spec.2
     let vals := gdf.groups.map fun (_, subDf) =>
       match subDf.columns.find? fun c => c.name == colName with
       | some col => applyAgg aggFunc col
       | none => Value.null
-    let aggName := s!"{colName}_{aggFunc}"
-    Column.mk aggName vals .mixed
-  let allCols := keyCols ++ aggCols.toArray
-  { columns := allCols
+    Column.mk s!"{colName}_{aggFunc}" vals .mixed
+  let keyCols := (Array.range keyArr.size).map mkKeyCol
+  let aggCols := specs.toArray.map mkAggCol
+  { columns := keyCols ++ aggCols
   , nRows := nGroups
-  , columns_aligned := by intro i h; sorry
+  , columns_aligned := fun i h => by
+      have hkc : keyCols.size = (Array.range keyArr.size).size := Array.size_map
+      have hac : aggCols.size = specs.toArray.size := Array.size_map
+      simp only [Array.size_append] at h
+      simp only [Array.getElem_append]
+      split
+      · rename_i hlt
+        exact DataFrame.map_column_aligned (Array.range keyArr.size) nGroups mkKeyCol
+          (fun _ => Array.size_map) i (by rw [Array.size_map]; omega)
+      · rename_i hge
+        exact DataFrame.map_column_aligned specs.toArray nGroups mkAggCol
+          (fun _ => Array.size_map) (i - keyCols.size) (by simp only [Array.size_map, Array.size_append, Array.size_range] at *; omega)
   }
 
 end DataFrame
