@@ -45,3 +45,16 @@ import Hale.Req
 import Hale.Conduit
 import Hale.DataFrame
 import Hale.HttpConduit
+-- New dependency libraries for PostgREST
+import Hale.Containers
+import Hale.Text
+import Hale.Scientific
+import Hale.Vector
+import Hale.Mtl
+import Hale.OptParse
+import Hale.ConfiguratorPg
+import Hale.Aeson
+import Hale.Hasql
+import Hale.Jose
+-- PostgREST
+import Hale.PostgREST

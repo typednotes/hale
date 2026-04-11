@@ -52,7 +52,7 @@ instance : Ix Nat where
     if h : i >= lo && i <= hi then
       some ⟨i - lo, by
         simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-        simp only [Ix.rangeSize]; split <;> omega⟩
+        simp only []; split <;> omega⟩
     else none
   inRange bounds i :=
     let (lo, hi) := bounds
@@ -75,7 +75,7 @@ instance : Ix Int where
     if h : i >= lo && i <= hi then
       some ⟨(i - lo).toNat, by
         simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-        simp only [Ix.rangeSize]; split <;> omega⟩
+        simp only []; split <;> omega⟩
     else none
   inRange bounds i :=
     let (lo, hi) := bounds
@@ -96,7 +96,7 @@ instance : Ix Char where
     if h : c.toNat >= lo.toNat && c.toNat <= hi.toNat then
       some ⟨c.toNat - lo.toNat, by
         simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-        simp only [Ix.rangeSize]; split <;> omega⟩
+        simp only []; split <;> omega⟩
     else none
   inRange bounds c :=
     let (lo, hi) := bounds
@@ -128,7 +128,6 @@ instance : Ix Bool where
     if h : boolToNat b >= boolToNat lo && boolToNat b <= boolToNat hi then
       some ⟨boolToNat b - boolToNat lo, by
         simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-        simp only [Ix.rangeSize]
         cases lo <;> cases hi <;> cases b <;> simp_all [boolToNat]⟩
     else none
   inRange bounds b :=

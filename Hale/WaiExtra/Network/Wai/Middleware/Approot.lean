@@ -15,7 +15,7 @@ open Network.HTTP.Types
     Useful for applications behind reverse proxies.
     $$\text{approotMiddleware} : \text{String} \to \text{Middleware}$$
     The provided function determines the approot from the request. -/
-def approotMiddleware (getApproot : Request → String) : Middleware :=
+def approotMiddleware (_getApproot : Request → String) : Middleware :=
   fun app req respond =>
     -- Just pass through — the approot can be computed from the request
     -- by application code using the provided function

@@ -19,7 +19,7 @@ def realIp : Middleware :=
   fun app req respond =>
     let xff := req.requestHeaders.find? (fun (n, _) => n == xForwardedFor) |>.map (·.2)
     let xri := req.requestHeaders.find? (fun (n, _) => n == xRealIp) |>.map (·.2)
-    let clientIp := xff.bind (fun s => s.splitOn "," |>.head? |>.map String.trim)
+    let clientIp := xff.bind (fun s => s.splitOn "," |>.head? |>.map (String.trimAscii · |>.toString))
       |>.orElse (fun _ => xri)
     match clientIp with
     | some ip => app { req with remoteHost := ⟨ip, req.remoteHost.port⟩ } respond

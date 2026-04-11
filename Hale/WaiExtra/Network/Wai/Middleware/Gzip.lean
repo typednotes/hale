@@ -43,7 +43,7 @@ private def clientAcceptsGzip (req : Request) : Bool :=
     NOTE: Full gzip compression requires zlib FFI. Currently this middleware
     adds the Content-Encoding header framework but delegates actual compression
     to a future zlib integration. -/
-def gzip (settings : GzipSettings := {}) : Middleware :=
+def gzip (_settings : GzipSettings := {}) : Middleware :=
   fun app req respond =>
     if clientAcceptsGzip req then
       app req fun resp =>

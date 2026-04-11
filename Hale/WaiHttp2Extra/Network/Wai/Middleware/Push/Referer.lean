@@ -49,7 +49,6 @@ def pushOnReferer (settings : PushSettings := {}) : IO Middleware := do
           mgr.record refPath path
       -- Look up pushable resources for this page
       mgr.getPushes path) fun pushes =>
-    let path := req.rawPathInfo
     if pushes.isEmpty then
       app req respond
     else
