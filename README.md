@@ -19,12 +19,12 @@
 </p>
 
 <p align="center">
-  <strong>257 compile-time theorems</strong> · <strong>40 ported libraries</strong> · <strong>223 Lean modules</strong>
+  <strong>257 compile-time theorems</strong> · <strong>45 ported libraries</strong> · <strong>241 Lean modules</strong>
 </p>
 
 ## Overview
 
-`hale` ports 40 Haskell libraries (223 Lean modules) covering everything from foundational types to a full HTTP/1-2-3 web server stack. Unlike a minimal port, types encode correctness proofs, invariants, and guarantees wherever feasible:
+`hale` ports 45 Haskell libraries (241 Lean modules) covering everything from foundational types to a full HTTP/1-2-3 web server stack. Unlike a minimal port, types encode correctness proofs, invariants, and guarantees wherever feasible:
 
 - **Correctness:** Lawful typeclasses (`LawfulBifunctor`, `LawfulCategory`, `LawfulTraversable`) with verified laws
 - **Invariants:** `Ratio` enforces positive denominator and coprimality in its type; `NonEmpty` guarantees `length >= 1`
@@ -63,6 +63,7 @@ open Hale
 | `Hale.DataDefault` | [data-default](https://hackage.haskell.org/package/data-default) | Default values |
 | `Hale.ResourceT` | [resourcet](https://hackage.haskell.org/package/resourcet) | Resource management monad |
 | `Hale.UnliftIO` | [unliftio-core](https://hackage.haskell.org/package/unliftio-core) | MonadUnliftIO |
+| `Hale.Conduit` | [conduit](https://hackage.haskell.org/package/conduit) | Composable streaming data pipelines |
 
 ### Networking
 
@@ -85,6 +86,9 @@ open Hale
 | `Hale.Http3` | [http3](https://hackage.haskell.org/package/http3) | HTTP/3 framing, QPACK |
 | `Hale.QUIC` | [quic](https://hackage.haskell.org/package/quic) | QUIC transport |
 | `Hale.BsbHttpChunked` | [bsb-http-chunked](https://hackage.haskell.org/package/bsb-http-chunked) | Chunked transfer encoding |
+| `Hale.HttpClient` | [http-client](https://hackage.haskell.org/package/http-client) | HTTP client with pluggable transport |
+| `Hale.HttpConduit` | [http-conduit](https://hackage.haskell.org/package/http-conduit) | HTTP + Conduit integration |
+| `Hale.Req` | [req](https://hackage.haskell.org/package/req) | Type-safe HTTP client |
 
 ### Web Application Interface
 
@@ -116,6 +120,12 @@ open Hale
 | `Hale.UnixCompat` | [unix-compat](https://hackage.haskell.org/package/unix-compat) | POSIX compatibility |
 | `Hale.AnsiTerminal` | [ansi-terminal](https://hackage.haskell.org/package/ansi-terminal) | Terminal ANSI codes |
 | `Hale.PSQueues` | [psqueues](https://hackage.haskell.org/package/psqueues) | Priority search queues |
+
+### Data
+
+| Lean Package | Haskell Package | Description |
+|---|---|---|
+| `Hale.DataFrame` | dataframe (adapted) | Tabular data with typed columns, CSV I/O |
 
 ## Typing Philosophy
 
