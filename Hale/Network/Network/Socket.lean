@@ -173,6 +173,12 @@ def connectFinish (s : Socket .connecting) : IO ConnectOutcome :=
 @[inline] def getFd (s : Socket state) : IO Nat :=
   socketGetFd s.raw
 
+/-- Poll a socket for readiness (read, write, or both) with a timeout.
+    Uses POSIX select() under the hood.
+    $$\text{poll} : \text{Socket}\ s \to \text{PollMode} \to \text{Nat} \to \text{IO PollOutcome}$$ -/
+@[inline] def poll (s : Socket state) (mode : PollMode) (timeoutMs : Nat := 30000) : IO PollOutcome :=
+  FFI.socketPoll s.raw mode.toUInt8 timeoutMs.toUInt32
+
 /-- Shutdown a connected socket for reading, writing, or both.
     $$\text{shutdown} : \text{Socket}\ \texttt{.connected} \to \text{ShutdownHow} \to \text{IO}(\text{Unit})$$
     POSIX: shutdown(2) requires a connected socket. -/

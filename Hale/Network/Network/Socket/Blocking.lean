@@ -27,10 +27,17 @@ partial def accept (s : Socket .listening) : IO (Socket .connected × SockAddr) 
   | .error e => throw e
 
 private partial def connectFinishLoop (s : Socket .connecting) : IO (Socket .connected) := do
-  match ← Network.Socket.connectFinish s with
-  | .connected sock => pure sock
-  | .inProgress sock => connectFinishLoop sock
-  | .refused e => throw e
+  -- Wait for the socket to become writable before checking connect status.
+  -- getsockopt(SO_ERROR)==0 is ambiguous without a writability check:
+  -- it can mean "connected" or "still connecting".
+  match ← Network.Socket.poll s .write 30000 with
+  | .timeout => throw (IO.userError "connect timed out")
+  | .error e => throw e
+  | .ready =>
+    match ← Network.Socket.connectFinish s with
+    | .connected sock => pure sock
+    | .inProgress sock => connectFinishLoop sock
+    | .refused e => throw e
 
 /-- Blocking connect: loops until connected or an error occurs.
 

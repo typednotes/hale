@@ -318,4 +318,25 @@ inductive SendOutcome where
   | wouldBlock : SendOutcome
   | error      : IO.Error → SendOutcome
 
+/-- Outcome of a `poll` (select/poll) call on a socket.
+    - `.ready` — the socket is ready for the requested operation
+    - `.timeout` — the timeout expired before readiness
+    - `.error` — OS-level error from select() -/
+inductive PollOutcome where
+  | ready   : PollOutcome
+  | timeout : PollOutcome
+  | error   : IO.Error → PollOutcome
+
+/-- Direction to poll for: read, write, or both. -/
+inductive PollMode where
+  | read  : PollMode
+  | write : PollMode
+  | both  : PollMode
+
+/-- Convert PollMode to the uint8 encoding expected by the C FFI. -/
+def PollMode.toUInt8 : PollMode → UInt8
+  | .read  => 0
+  | .write => 1
+  | .both  => 2
+
 end Network.Socket

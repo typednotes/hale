@@ -235,6 +235,14 @@ opaque recvBufReadLineNB (buf : @& RecvBuffer) : IO (Option String)
 @[extern "hale_recvbuf_readn_nb"]
 opaque recvBufReadNNB (buf : @& RecvBuffer) (n : USize) : IO (ByteArray × Bool)
 
+-- ── Socket readiness polling (select) ──
+
+/-- Poll a socket for readiness using select().
+    Thin wrapper around the POSIX select() syscall.
+    $$\text{socketPoll} : \text{Socket} \to \text{UInt8} \to \text{UInt32} \to \text{IO PollOutcome}$$ -/
+@[extern "hale_socket_poll"]
+opaque socketPoll (sock : @& RawSocket) (mode : UInt8) (timeoutMs : UInt32) : IO PollOutcome
+
 -- ── Event multiplexing (kqueue/epoll) ──
 
 /-- Create an event loop (kqueue on macOS, epoll on Linux).

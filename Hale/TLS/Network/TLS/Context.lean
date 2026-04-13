@@ -97,12 +97,10 @@ opaque writeNB (session : @& TLSSession) (data : @& ByteArray) : IO (TLSOutcome 
 @[extern "hale_tls_client_ctx_create"]
 opaque createClientContext : IO TLSContext
 
-/-- Perform a blocking TLS client handshake on a connected socket.
-    Sets SNI (Server Name Indication) from the hostname.
-    The server's certificate is verified against system CA trust store.
-    $$\text{connectSocket} : \text{TLSContext} \to \text{RawSocket} \to \text{String} \to \text{IO TLSSession}$$ -/
+/-- Raw blocking TLS client handshake (C FFI). Does not handle
+    WANT_READ/WANT_WRITE — use `connectSocket` for robustness. -/
 @[extern "hale_tls_connect_socket"]
-opaque connectSocket (ctx : @& TLSContext) (sock : @& Network.Socket.RawSocket)
+opaque connectSocketRaw (ctx : @& TLSContext) (sock : @& Network.Socket.RawSocket)
     (hostname : @& String) : IO TLSSession
 
 /-- Non-blocking TLS client handshake. Returns `TLSOutcome TLSSession`.
@@ -111,5 +109,28 @@ opaque connectSocket (ctx : @& TLSContext) (sock : @& Network.Socket.RawSocket)
 @[extern "hale_tls_connect_socket_nb"]
 opaque connectSocketNB (ctx : @& TLSContext) (sock : @& Network.Socket.RawSocket)
     (hostname : @& String) : IO (TLSOutcome TLSSession)
+
+/-- Blocking TLS client handshake with select()-based retry.
+    Uses the non-blocking FFI and polls for socket readiness on
+    WANT_READ/WANT_WRITE, handling the case where the underlying
+    TCP socket may not be fully ready yet.
+    Sets SNI (Server Name Indication) from the hostname.
+    The server's certificate is verified against system CA trust store.
+    $$\text{connectSocket} : \text{TLSContext} \to \text{RawSocket} \to \text{String} \to \text{IO TLSSession}$$ -/
+partial def connectSocket (ctx : @& TLSContext) (sock : @& Network.Socket.RawSocket)
+    (hostname : @& String) : IO TLSSession := do
+  match ← connectSocketNB ctx sock hostname with
+  | .ok session => pure session
+  | .error e => throw e
+  | .wantRead =>
+    match ← Network.Socket.FFI.socketPoll sock Network.Socket.PollMode.read.toUInt8 30000 with
+    | .ready => connectSocket ctx sock hostname
+    | .timeout => throw (IO.userError "TLS handshake timed out (waiting for read)")
+    | .error e => throw e
+  | .wantWrite =>
+    match ← Network.Socket.FFI.socketPoll sock Network.Socket.PollMode.write.toUInt8 30000 with
+    | .ready => connectSocket ctx sock hostname
+    | .timeout => throw (IO.userError "TLS handshake timed out (waiting for write)")
+    | .error e => throw e
 
 end Network.TLS

@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/select.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -1011,6 +1012,41 @@ LEAN_EXPORT lean_obj_res hale_socket_connect_finish(b_lean_obj_arg sock) {
     lean_obj_res r = lean_alloc_ctor(0, 1, 0);
     lean_ctor_set(r, 0, sock);
     return lean_io_result_mk_ok(r);
+}
+
+/**
+ * Wait for a socket to become readable and/or writable using select().
+ * `mode`: 0 = read, 1 = write, 2 = both.
+ * `timeout_ms`: timeout in milliseconds.
+ * Returns PollOutcome:
+ *   tag 0 = .ready          — ctor(0, 0, 0)
+ *   tag 1 = .timeout        — ctor(1, 0, 0)
+ *   tag 2 = .error IO.Error — ctor(2, 1, 0)[err]
+ */
+LEAN_EXPORT lean_obj_res hale_socket_poll(b_lean_obj_arg sock, uint8_t mode, uint32_t timeout_ms) {
+    int fd = get_socket_fd(sock);
+    fd_set rfds, wfds;
+    FD_ZERO(&rfds);
+    FD_ZERO(&wfds);
+    if (mode == 0 || mode == 2) FD_SET(fd, &rfds);
+    if (mode == 1 || mode == 2) FD_SET(fd, &wfds);
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    int sel = select(fd + 1,
+                     (mode == 0 || mode == 2) ? &rfds : NULL,
+                     (mode == 1 || mode == 2) ? &wfds : NULL,
+                     NULL, &tv);
+    if (sel > 0) {
+        return lean_io_result_mk_ok(lean_alloc_ctor(0, 0, 0));  /* .ready */
+    }
+    if (sel == 0) {
+        return lean_io_result_mk_ok(lean_alloc_ctor(1, 0, 0));  /* .timeout */
+    }
+    lean_obj_res e = mk_io_errno_error_obj();
+    lean_obj_res r = lean_alloc_ctor(2, 1, 0);
+    lean_ctor_set(r, 0, e);
+    return lean_io_result_mk_ok(r);  /* .error */
 }
 
 /**
